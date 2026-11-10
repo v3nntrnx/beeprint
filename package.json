@@ -1,0 +1,18 @@
+{
+  "name": "beeprint",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:css": "sass --no-source-map assets/css/styles.scss assets/css/styles.css",
+    "build": "npm run build:css && node build.mjs",
+    "preview": "node preview.mjs",
+    "start": "npm run build && node preview.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "sass": "^1.89.0"
+  }
+}

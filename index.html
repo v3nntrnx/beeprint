@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Plan Bee Swarm Simulator crafting goals, track your inventory, and see the raw materials and Blender time you still need.">
+<meta name="theme-color" content="#7bc5d5">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light">
+<title>BeePrint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="assets/favicon/favicon-96x96.png" sizes="96x96">
+<link rel="shortcut icon" href="assets/favicon/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+<link rel="manifest" href="assets/favicon/site.webmanifest">
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+<noscript><div class="no-script" role="alert">BeePrint needs JavaScript to load the planner. Please enable JavaScript in your browser and reload this page.</div></noscript>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo"><img src="assets/img/logo.webp" alt="" width="256" height="256"></div>
+      <div><h1>BeePrint</h1><p class="sub" id="tagline"></p></div>
+      <button class="credits-button" id="credits-open" type="button" aria-label="Author &amp; Credits" title="Author &amp; Credits" aria-haspopup="dialog"><span class="credits-icon" aria-hidden="true">i</span><span class="credits-label">Credits</span></button>
+    </div>
+    <svg class="drip" viewBox="0 0 310 40" preserveAspectRatio="none" aria-hidden="true"><path fill="#ffbf1f" d="M0 0H310V12C288 12 290 36 279 36S270 12 246 12C224 12 226 28 217 28S208 12 178 12C156 12 158 40 147 40S138 12 110 12C88 12 90 26 81 26S72 12 50 12C30 12 32 34 21 34S12 12 0 12Z"/></svg>
+    <div class="in">
+      <h2>What are you building?</h2>
+      <div class="goals" id="goals"></div>
+      <button class="ghost" id="reset" type="button">Reset all counts</button>
+      <div class="data-actions"><button class="ghost" id="export-json" type="button">Export JSON</button><button class="ghost" id="import-json" type="button">Import JSON</button></div>
+      <input class="file-input" id="import-file" type="file" accept="application/json,.json">
+      <div class="storage-row">
+        <label class="storage-opt"><input id="save-storage" type="checkbox"><span>Save in browser storage</span></label>
+        <button class="storage-settings" id="storage-settings" type="button" aria-label="Storage settings" title="Storage settings" aria-haspopup="dialog">⚙</button>
+      </div>
+      <div id="status" role="status" aria-live="polite" aria-atomic="true">Loading...</div>
+    </div>
+  </aside>
+  <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin="72" aria-valuemax="440" aria-valuenow="290" tabindex="0"></div>
+  <main class="main">
+    <div class="scroller graph-area">
+      <div class="graph-overlay">
+        <div class="graph-toolbar">
+          <div class="ctl"><span>Step size</span><div class="seg" id="steps"></div></div>
+          <div class="graph-zoom" aria-label="Graph zoom">
+            <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <span class="graph-zoom-value" id="zoom-value">100%</span>
+            <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="graph-legend" role="note" aria-label="Graph legend">
+          <span class="legend-entry"><b class="legend-count">123</b> Owned</span>
+          <span class="legend-entry"><b class="legend-step">+ / −</b> Change by step</span>
+          <span class="legend-entry"><b class="legend-arrow">→ ×10</b> Ingredient amount</span>
+          <span class="legend-entry"><i class="legend-progress"><i></i></i> Progress</span>
+          <span class="legend-entry legend-blender"><img src="assets/img/icons/blender_2d.webp" alt="" width="16" height="16"> Blend amount</span>
+          <span class="legend-entry"><b>Alt + scroll / + / −</b> Zoom</span>
+        </div>
+        <div class="graph-actions">
+          <div class="graph-craft-time" id="craft-time-total" title="Five minutes per Blender craft; timer runs while in-game.">Blender time: 0 min</div>
+          <button class="ghost graph-export" id="export-requirements" type="button" aria-haspopup="dialog">Export inventory &amp; requirements</button>
+        </div>
+      </div>
+      <div class="graph-pan" role="region" aria-label="Crafting plan graph">
+        <div class="graph-viewport" id="graph-viewport"><div class="graph" id="graph"></div></div>
+      </div>
+      <div class="graph-focus-bar" id="graph-focus-bar" role="navigation" aria-label="Focus path" hidden></div>
+    </div>
+    <div class="lists">
+      <div class="panel"><h2>Still to gather</h2><div class="tiny">Raw materials, after counting everything you've already crafted.</div><div id="gather"></div></div>
+      <div class="panel"><h2>Still to craft</h2><div class="tiny">Blender crafts left, in the order to make them.</div><div id="todo"></div></div>
+    </div>
+  </main>
+</div>
+<dialog class="craft-dialog" id="craft-dialog" aria-labelledby="craft-dialog-title">
+  <div class="craft-dialog-head"><img src="assets/img/icons/blender_2d.webp" alt="" width="32" height="32"><span class="ic craft-item-icon" id="craft-item-icon" aria-hidden="true"></span><h2 id="craft-dialog-title">Blend <span id="craft-dialog-item"></span></h2></div>
+  <label for="craft-amount">Amount to blend</label>
+  <div class="craft-amount-row"><input id="craft-amount" inputmode="decimal" value="1"><button id="craft-add" type="button" aria-label="Increase blend amount">+</button><button id="craft-sub" type="button" aria-label="Decrease blend amount">−</button><button id="craft-max" type="button">Max</button></div>
+  <div class="tiny craft-limit" id="craft-limit"></div>
+  <div class="craft-dialog-actions"><button class="ghost" id="craft-cancel" type="button">Cancel</button><button class="craft" id="craft-confirm" type="button">Blended</button></div>
+</dialog>
+<dialog class="craft-dialog storage-consent" id="storage-consent-dialog" aria-labelledby="storage-consent-title">
+  <h2 id="storage-consent-title">Save your progress?</h2>
+  <p>May BeePrint save your inventory and selected goals in browser storage on this device? Your choice will be remembered. If you choose not to, your progress lasts only until you close this page. You can change this choice in Storage settings.</p>
+  <div class="craft-dialog-actions"><button class="ghost" id="storage-decline" type="button">No thanks</button><button class="craft" id="storage-allow" type="button">Save in browser storage</button></div>
+</dialog>
+<dialog class="craft-dialog credits-dialog" id="credits-dialog" aria-labelledby="credits-title">
+  <h2 id="credits-title">Author &amp; Credits</h2>
+  <p class="credits-author">Created by <a href="https://github.com/v3nntrnx" target="_blank" rel="noopener noreferrer">v3nntrnx</a> on GitHub.</p>
+  <p>BeePrint is a fan-made planning tool and is not affiliated with or endorsed by Onett or Roblox.</p>
+  <h3>Credits</h3>
+  <ul class="credits-list">
+    <li><a href="https://bee-swarm-simulator.fandom.com/wiki/User_blog:Larceushunter/BSS_wiki_Background_contest_submission?file=Light_Mode_BSS_background_entry_.jpg" target="_blank" rel="noopener noreferrer">Background image</a> by Larceushunter, from a Bee Swarm Simulator Wiki background contest submission.</li>
+    <li><a href="https://bee-swarm-simulator.fandom.com/wiki" target="_blank" rel="noopener noreferrer">Bee Swarm Simulator Wiki</a> for shop data and item icon references, including the <a href="https://bee-swarm-simulator.fandom.com/wiki/Shops" target="_blank" rel="noopener noreferrer">Shops</a> pages (Mountain Top Shop, Red and Blue HQs, Petal Shop, Dapper Bear's Shop, and others).</li>
+    <li><a href="https://bee-swarm-simulator.fandom.com/wiki/Blender" target="_blank" rel="noopener noreferrer">Blender crafting time</a>: five minutes per item; crafting time counts down while in-game.</li>
+    <li><a href="https://beeswarm-calculator.netlify.app/" target="_blank" rel="noopener noreferrer">Bee Swarm Calculator</a> for ideas and inspiration.</li>
+    <li>Bee Swarm Simulator and its original game assets are by Onett.</li>
+    <li>AI tools assisted with development of BeePrint.</li>
+  </ul>
+  <div class="craft-dialog-actions"><button class="ghost" id="credits-close" type="button">Close</button></div>
+</dialog>
+<dialog class="craft-dialog requirements-dialog" id="requirements-dialog" aria-labelledby="requirements-title">
+  <h2 id="requirements-title">Inventory &amp; requirements</h2>
+  <label class="requirements-format" for="requirements-number-format">
+    Number format
+    <select id="requirements-number-format">
+      <option value="human" selected>Human-readable (5 mil)</option>
+      <option value="exact">Exact with commas (5,000,000)</option>
+    </select>
+  </label>
+  <pre id="requirements-text" aria-label="Export preview"></pre>
+  <div class="craft-dialog-actions">
+    <button class="ghost" id="requirements-close" type="button">Close</button>
+    <button class="ghost" id="requirements-copy" type="button">Copy</button>
+    <button class="craft" id="requirements-download" type="button">Download</button>
+  </div>
+</dialog>
+
+<script id="app-data" type="application/json">__DATA__</script>
+<script type="module" src="assets/scripts/app.js"></script>
+</body>
+</html>
