@@ -29,6 +29,7 @@ const STORAGE_KEYS = {
   graphView: "bssPlannerGraphView",
   step: "bssPlannerStep",
   consent: "bssPlannerStorageConsent",
+  theme: "bssPlannerTheme",
 };
 const PROGRESS_STORAGE_KEYS = [
   STORAGE_KEYS.inventory,
@@ -57,6 +58,7 @@ function storageRemove(keys) {
     try { localStorage.removeItem(key); } catch {}
   }
 }
+document.documentElement.dataset.theme = storageGet(STORAGE_KEYS.theme) === "dark" ? "dark" : "light";
 function removeStoredProgress() {
   storageRemove(PROGRESS_STORAGE_KEYS);
 }
@@ -86,10 +88,13 @@ if (storageConsent) {
       typeof goal === "string" && Object.hasOwn(D.goals, goal)));
   }
 }
-const collapsedGoalShops = new Set();
+const collapsedGoalShops = new Set(Object.keys(D.goals).map((goal) => D.goalShops[goal] || "Other Items"));
 if (storageConsent) {
-  const savedShops = readStoredJson(COLLAPSED_SHOPS_STORAGE_KEY, []);
-  if (Array.isArray(savedShops)) savedShops.filter((shop) => typeof shop === "string").forEach((shop) => collapsedGoalShops.add(shop));
+  const savedShops = readStoredJson(COLLAPSED_SHOPS_STORAGE_KEY, null);
+  if (Array.isArray(savedShops)) {
+    collapsedGoalShops.clear();
+    savedShops.filter((shop) => typeof shop === "string").forEach((shop) => collapsedGoalShops.add(shop));
+  }
 }
 let inv = {}, step = 10, busy = false;
 const savedHiddenCraftItems = storageConsent ? readStoredJson(STORAGE_KEYS.hiddenCraftItems, []) : [];
@@ -105,7 +110,38 @@ let focusClearTimer = 0, selectedFocusPath = [];
 
 const $ = (id) => document.getElementById(id);
 const storageToggle = $("save-storage");
+const themeToggle = $("theme-toggle"), themeToggleIcon = $("theme-toggle-icon");
+const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+function setDarkTheme(enabled, persist = false) {
+  document.documentElement.dataset.theme = enabled ? "dark" : "light";
+  themeToggle.setAttribute("aria-pressed", String(enabled));
+  themeToggle.title = enabled ? "Switch to light theme" : "Switch to dark theme";
+  themeToggleIcon.textContent = enabled ? "☀" : "☾";
+  colorSchemeMeta.content = enabled ? "dark" : "light";
+  themeColorMeta.content = enabled ? "#111820" : "#7bc5d5";
+  if (persist && !storageSet(STORAGE_KEYS.theme, enabled ? "dark" : "light")) {
+    status("Theme changed, but this browser could not save your preference.", "error");
+    return false;
+  }
+  return true;
+}
+setDarkTheme(document.documentElement.dataset.theme === "dark");
+themeToggle.addEventListener("click", () => {
+  setDarkTheme(themeToggle.getAttribute("aria-pressed") !== "true", true);
+});
 const app = document.querySelector(".app"), sidebar = document.querySelector(".side"), sidebarResizer = $("sidebar-resizer");
+const mobileViewTabs = $("mobile-view-tabs"), mobileGoalsTab = $("mobile-goals-tab"), mobilePlanTab = $("mobile-plan-tab");
+function setMobileView(view, scrollToTabs = true) {
+  const showGoals = view === "goals";
+  app.classList.toggle("mobile-goals-view", showGoals);
+  app.classList.toggle("mobile-plan-view", !showGoals);
+  mobileGoalsTab.setAttribute("aria-pressed", String(showGoals));
+  mobilePlanTab.setAttribute("aria-pressed", String(!showGoals));
+  if (scrollToTabs && innerWidth <= 900) mobileViewTabs.scrollIntoView({ block: "start" });
+}
+mobileGoalsTab.addEventListener("click", () => setMobileView("goals"));
+mobilePlanTab.addEventListener("click", () => setMobileView("plan"));
 const SIDEBAR_MIN_WIDTH = 72, SIDEBAR_COMPACT_THRESHOLD = 132, SIDEBAR_MAX_WIDTH = 440;
 function setSidebarWidth(value, persist = false) {
   const width = Number(value);
@@ -304,6 +340,16 @@ function status(msg, type) {
   element.className = type || "";
 }
 
+function updateSaveIndicator() {
+  const indicator = $("save-indicator");
+  const enabled = storageConsent && storageToggle.checked;
+  indicator.textContent = enabled ? "Auto-save on" : "Not saved — session only";
+  indicator.title = enabled
+    ? "Progress is saved in this browser."
+    : "Progress is kept only while this page is open. Enable browser storage in the sidebar to save it.";
+  indicator.classList.toggle("saving-enabled", enabled);
+}
+
 function emptyInventory() {
   return createEmptyInventory(ITEM_KEYS);
 }
@@ -319,13 +365,17 @@ function loadInventory() {
 }
 
 function saveInventory() {
-  if (!storageConsent || !storageToggle.checked) return true;
+  if (!storageConsent || !storageToggle.checked) {
+    updateSaveIndicator();
+    return true;
+  }
   const saved = storageSet(INVENTORY_STORAGE_KEY, JSON.stringify(inv));
   storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
   storageSet(STORAGE_KEYS.purchasedGoals, JSON.stringify([...purchasedGoals]));
   storageSet(STORAGE_KEYS.hiddenCraftItems, JSON.stringify([...hiddenCraftItems]));
   storageSet(STORAGE_KEYS.step, String(step));
   storageSet(SIDEBAR_WIDTH_STORAGE_KEY, getComputedStyle(app).getPropertyValue("--sidebar-width").trim());
+  updateSaveIndicator();
   return saved;
 }
 
@@ -353,11 +403,13 @@ storageToggle.onchange = () => {
     }
     const saved = saveInventory();
     status(saved ? "Inventory will save in browser storage." : "Could not save in browser storage.", saved ? "ok" : "error");
+    updateSaveIndicator();
   } else {
     storageConsent = false; storageDeclined = true;
     storageSet(STORAGE_CONSENT_KEY, "denied");
     removeStoredProgress();
     status("Browser storage saving disabled.", "ok");
+    updateSaveIndicator();
   }
 };
 $("storage-allow").onclick = () => {
@@ -383,6 +435,7 @@ $("storage-allow").onclick = () => {
   storageToggle.checked = consentSaved;
   const stored = storageConsent ? saveInventory() : false;
   status(stored ? "Saved in browser storage." : "Could not save in browser storage.", stored ? "ok" : "error");
+  updateSaveIndicator();
   storageDialog.close();
   buildChips();
   refreshGross();
@@ -394,6 +447,7 @@ $("storage-decline").onclick = () => {
   removeStoredProgress();
   storageDialog.close();
   status("Progress will stay in memory for this page.", "ok");
+  updateSaveIndicator();
 };
 $("storage-settings").onclick = () => storageDialog.showModal();
 const creditsDialog = $("credits-dialog");
@@ -810,25 +864,31 @@ function openItemGuide(itemKey, goal = false) {
   ways.replaceChildren();
 
   if (goal) {
-    details.append(h("h3", "", "Requirements"));
+    const requirements = Object.entries(D.goals[itemKey].cost);
+    const disclosure = h("details", "item-guide-requirements");
+    disclosure.append(h("summary", "", "Requirements (" + requirements.length + ")"));
     const costs = h("div", "goal-cost-list");
-    for (const [key, quantity] of Object.entries(D.goals[itemKey].cost)) {
+    for (const [key, quantity] of requirements) {
       const row = h("div", "goal-cost");
       row.append(ico(D.items[key].icon, key), h("span", "", D.items[key].name),
         h("b", "goal-cost-count", fmt(inv[key] || 0) + " / " + fmt(quantity)));
       costs.append(row);
     }
-    details.append(costs);
+    disclosure.append(costs);
+    details.append(disclosure);
   } else if (recipe) {
-    details.append(h("h3", "", "Blender recipe"));
+    const ingredientsList = Object.entries(recipe);
+    const disclosure = h("details", "item-guide-requirements");
+    disclosure.append(h("summary", "", "Blender recipe (" + ingredientsList.length + " ingredients)"));
     const ingredients = h("div", "goal-cost-list");
-    for (const [key, quantity] of Object.entries(recipe)) {
+    for (const [key, quantity] of ingredientsList) {
       const row = h("div", "goal-cost");
       row.append(ico(D.items[key].icon, key), h("span", "", D.items[key].name),
         h("b", "goal-cost-count", fmt(quantity) + " per craft · " + fmt(inv[key] || 0) + " owned"));
       ingredients.append(row);
     }
-    details.append(ingredients);
+    disclosure.append(ingredients);
+    details.append(disclosure);
   } else {
     details.append(h("p", "item-guide-no-recipe", "BeePrint has no Blender recipe listed for this item."));
   }
@@ -1266,6 +1326,7 @@ function updateFocusBreadcrumb() {
       bar.append(current);
     }
   });
+  bar.append(h("span", "focus-exit-hint", "Click the focused card again or press Esc to exit focus mode."));
 }
 
 function toggleFocusView(key) {
@@ -1311,6 +1372,10 @@ function buildChips() {
     if (!groups.has(shop)) groups.set(shop, []);
     groups.get(shop).push([g, v]);
   }
+  const query = $("goal-search").value.trim().toLowerCase();
+  const filtersActive = !!query;
+  const compact = app.classList.contains("compact-sidebar");
+  let visibleCount = 0;
   const appendGoalGroup = (shop, goals, collapsed, collapsible, showLabel = true) => {
     const group = h("section", "goal-group"), items = h("div", "goal-group-items");
     items.id = "goal-group-" + shop.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -1332,8 +1397,11 @@ function buildChips() {
       selectAll.type = "checkbox";
       selectAll.checked = selectedCount === goals.length;
       selectAll.indeterminate = false;
-      selectAll.setAttribute("aria-label", (selectedCount === goals.length ? "Deselect" : "Select") + " all goals in " + shop);
-      selectAll.title = selectedCount === goals.length ? "Deselect all in " + shop : "Select all in " + shop;
+      const scope = (filtersActive ? "matching goals in " : "goals in ") + shop;
+      selectAll.setAttribute("aria-label", (selectedCount === goals.length ? "Deselect all " : "Select all ") + scope);
+      selectAll.title = selectedCount === goals.length
+        ? "Remove all " + scope + " from your plan"
+        : "Add all " + scope + " to your plan";
       selectAll.onchange = () => {
         const allSelected = goals.every(([goal]) => sel.includes(goal));
         const categoryGoals = new Set(goals.map(([goal]) => goal));
@@ -1375,15 +1443,33 @@ function buildChips() {
     }
     group.append(items); c.append(group);
   };
-  if (app.classList.contains("compact-sidebar")) {
+  if (compact) {
     const selectedGoals = Object.entries(D.goals).filter(([g]) => sel.includes(g));
     if (selectedGoals.length) appendGoalGroup("", selectedGoals, false, false, false);
+    visibleCount = Object.keys(D.goals).length;
   }
   for (const [shop, goals] of groups) {
-    const visibleGoals = app.classList.contains("compact-sidebar") ? goals.filter(([g]) => !sel.includes(g)) : goals;
-    if (visibleGoals.length) appendGoalGroup(shop, visibleGoals, collapsedGoalShops.has(shop), true);
+    const visibleGoals = compact
+      ? goals.filter(([g]) => !sel.includes(g))
+      : goals.filter(([g, goal]) => {
+        if (query && !(goal.name + " " + g.replace(/_/g, " ")).toLowerCase().includes(query)) return false;
+        return true;
+      });
+    if (visibleGoals.length) {
+      if (!compact) visibleCount += visibleGoals.length;
+      appendGoalGroup(shop, visibleGoals, !filtersActive && collapsedGoalShops.has(shop), true);
+    }
+  }
+  if (!compact) {
+    const total = Object.keys(D.goals).length;
+    $("goal-filter-count").textContent = filtersActive
+      ? "Showing " + visibleCount + " of " + total + " goals"
+      : total + " goals across " + groups.size + " categories";
+    if (!visibleCount) c.append(h("div", "goal-filter-empty", "No goals match. Try a different search or filter."));
   }
 }
+
+$("goal-search").addEventListener("input", buildChips);
 
 function render(autoFit = false) {
   const P = plan(inv), g = $("graph"), { lvl, goalL } = layout(), N = goalL + 1;
@@ -1593,14 +1679,19 @@ const TUTORIAL_KEY = "beePrintTutorialComplete";
 const tutorialLayer = $("tutorial-layer"), tutorialCard = tutorialLayer.querySelector(".tutorial-card");
 const tutorialSteps = [
   { selector: "#goal-btn-gummyballer", title: "Choose your goals", copy: "Pick the items you want to make or buy. Select more than one to combine their material requirements." },
-  { selector: "#n-gumdrops", title: "Read a plan card", copy: "Cards show what you own, what you still need, and your progress. Select a card to focus on its ingredients." },
+  { selector: "#n-gumdrops", title: "Focus on a recipe", copy: "Click a plan card to focus the graph on that item's recipes and ingredients. Click it again or press Escape to return to the full plan." },
+  ...(innerWidth > 900 ? [{
+    selector: "#sidebar-resizer",
+    title: "Use compact mode",
+    copy: "After the tutorial, drag the divider beside the sidebar left until it becomes icon-only. Drag it right to show labels again. You can also focus the divider and use the Left and Right arrow keys.",
+  }] : []),
   { selector: ".graph-ticket-balance", title: "Track your tickets", copy: "Change your ticket amount here. BeePrint uses this balance when checking shop purchases." },
   { selector: "#n-swirled_waxes .recipe-plan-toggle", title: "Hide ingredients when needed", copy: "The eye button switches an item to gather-or-buy-only, so its recipe ingredients no longer expand into your plan." },
   { selector: "#n-gumdrops .buy-item", title: "Open the shop", copy: "Use the cart button to choose a number of bundles, review the total cost, and confirm a purchase." },
   { selector: ".lists .panel:first-child h2", title: "Track your progress", copy: "These lists summarize what remains to gather and craft across your selected goals." },
   { selector: "#export-requirements", title: "Take your plan with you", copy: "Export a readable inventory and requirements list whenever you need it. You can skip or finish the tour at any time." },
 ];
-let tutorialStarted = false, tutorialIndex = 0, tutorialTarget = null, tutorialOriginalGoals = [];
+let tutorialStarted = false, tutorialIndex = 0, tutorialTarget = null, tutorialOriginalGoals = [], tutorialOriginalMobileView = "goals";
 function hasCompletedTutorial() {
   if (storageConsent && storageGet(TUTORIAL_KEY) === "yes") return true;
   try { return sessionStorage.getItem(TUTORIAL_KEY) === "yes"; } catch { return false; }
@@ -1638,6 +1729,9 @@ function positionTutorial() {
 function showTutorialStep() {
   if (tutorialTarget) tutorialTarget.classList.remove("tutorial-target");
   const stepInfo = tutorialSteps[tutorialIndex];
+  if (innerWidth <= 900) {
+    setMobileView(stepInfo.selector.startsWith("#goal-btn") ? "goals" : "plan", false);
+  }
   const target = document.querySelector(stepInfo.selector);
   if (!target) {
     status("The tutorial could not find a page item. You can continue using BeePrint normally.", "error");
@@ -1655,10 +1749,11 @@ function showTutorialStep() {
   requestAnimationFrame(positionTutorial);
   setTimeout(positionTutorial, 160);
 }
-function startTutorial() {
-  if (tutorialStarted || hasCompletedTutorial() || storageDialog.open) return;
+function startTutorial(replay = false) {
+  if (tutorialStarted || (!replay && hasCompletedTutorial()) || storageDialog.open) return;
   tutorialStarted = true;
   tutorialOriginalGoals = [...sel];
+  tutorialOriginalMobileView = app.classList.contains("mobile-plan-view") ? "plan" : "goals";
   sel = [...new Set([...sel, "gummyballer", "heat_treated_planter", "cobalt_guard"])];
   refreshGross();
   buildChips();
@@ -1676,6 +1771,7 @@ function finishTutorial() {
   tutorialTarget = null;
   tutorialLayer.hidden = true;
   app.inert = false;
+  if (innerWidth <= 900) setMobileView(tutorialOriginalMobileView);
   sel = tutorialOriginalGoals;
   if (storageConsent && storageToggle.checked) storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
   refreshGross();
@@ -1684,6 +1780,8 @@ function finishTutorial() {
   rememberTutorialCompletion();
 }
 $("tutorial-skip").onclick = finishTutorial;
+$("tutorial-open").addEventListener("click", () => startTutorial(true));
+$("mobile-help-button").addEventListener("click", () => startTutorial(true));
 $("tutorial-back").onclick = () => {
   if (tutorialIndex > 0) {
     tutorialIndex--;
@@ -1754,3 +1852,4 @@ buildChips();
 
 render(!savedGraphView);
 status(storageToggle.checked ? "Saved in browser storage" : "Browser storage saving is off", "ok");
+updateSaveIndicator();

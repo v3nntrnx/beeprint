@@ -20,7 +20,12 @@
 </head>
 <body>
 <noscript><div class="no-script" role="alert">BeePrint needs JavaScript to load the planner. Please enable JavaScript in your browser and reload this page.</div></noscript>
-<div class="app">
+<div class="app mobile-goals-view">
+  <div class="mobile-view-tabs" id="mobile-view-tabs" role="group" aria-label="Planner views">
+    <button id="mobile-goals-tab" type="button" aria-pressed="true">Goals</button>
+    <button id="mobile-plan-tab" type="button" aria-pressed="false">Plan</button>
+    <button id="mobile-help-button" class="mobile-help-button" type="button" aria-label="Replay the tutorial" title="Replay the tutorial">?</button>
+  </div>
   <aside class="side">
     <div class="brand">
       <div class="logo"><img src="assets/img/logo.webp" alt="" width="256" height="256"></div>
@@ -34,6 +39,18 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 6.5c-2.5-2-5.5-2-8-1v13c2.5-1 5.5-1 8 1m0-13c2.5-2 5.5-2 8-1v13c-2.5-1-5.5-1-8 1m0-13v13"/></svg>
         <span class="progression-guide-label">BSS Progression Guide</span>
       </button>
+      <button class="ghost tutorial-replay-button" id="tutorial-open" type="button" aria-label="Replay the BeePrint tutorial" title="Replay the BeePrint tutorial">
+        <span class="tutorial-replay-icon" aria-hidden="true">?</span>
+        <span class="tutorial-replay-label">How to use BeePrint</span>
+      </button>
+      <button class="ghost theme-toggle" id="theme-toggle" type="button" aria-label="Dark theme" aria-pressed="false" title="Switch to dark theme">
+        <span class="theme-toggle-icon" id="theme-toggle-icon" aria-hidden="true">☾</span>
+        <span class="theme-toggle-label">Dark theme</span>
+      </button>
+      <div class="goal-filters">
+        <input id="goal-search" type="search" placeholder="Search goals" aria-label="Search goals">
+        <p class="goal-filter-count" id="goal-filter-count" aria-live="polite"></p>
+      </div>
       <div class="goals" id="goals"></div>
       <button class="ghost" id="reset" type="button">Reset all counts</button>
       <div class="data-actions"><button class="ghost" id="export-json" type="button">Export JSON</button><button class="ghost" id="import-json" type="button">Import JSON</button></div>
@@ -75,14 +92,15 @@
           <span class="legend-entry"><b>Alt + scroll / + / −</b> Zoom</span>
         </div>
         <div class="graph-actions">
+          <div class="save-indicator" id="save-indicator" role="status" aria-live="polite">Not saved</div>
           <div class="graph-craft-time" id="craft-time-total" title="Five minutes per Blender craft; timer runs while in-game.">Blender time: 0 min</div>
           <button class="ghost graph-export" id="export-requirements" type="button" aria-haspopup="dialog">Export inventory &amp; requirements</button>
         </div>
       </div>
+      <div class="graph-focus-bar" id="graph-focus-bar" role="navigation" aria-label="Focus path" hidden></div>
       <div class="graph-pan" role="region" aria-label="Crafting plan graph">
         <div class="graph-viewport" id="graph-viewport"><div class="graph" id="graph"></div></div>
       </div>
-      <div class="graph-focus-bar" id="graph-focus-bar" role="navigation" aria-label="Focus path" hidden></div>
     </div>
     <div class="lists">
       <div class="panel"><h2>Still to gather</h2><div class="tiny">Raw materials, after counting everything you've already crafted.</div><div id="gather"></div></div>

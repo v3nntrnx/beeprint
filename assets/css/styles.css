@@ -184,6 +184,10 @@ h2 {
   align-items: start;
 }
 
+.mobile-view-tabs {
+  display: none;
+}
+
 .side {
   position: sticky;
   top: 16px;
@@ -267,9 +271,19 @@ body.graph-panning {
 .compact-sidebar .credits-icon {
   display: inline-grid;
 }
+.compact-sidebar .theme-toggle {
+  width: 44px;
+  height: 44px;
+  margin: 5px auto;
+  padding: 8px;
+}
+.compact-sidebar .theme-toggle-label {
+  display: none;
+}
 .compact-sidebar .brand > div:not(.logo),
 .compact-sidebar .drip,
 .compact-sidebar .side .in > h2,
+.compact-sidebar .goal-filters,
 .compact-sidebar .goal-group-toggle,
 .compact-sidebar .goal-group-select,
 .compact-sidebar .goal-group-label,
@@ -418,7 +432,42 @@ body.graph-panning {
   stroke-width: 1.7;
 }
 
+.tutorial-replay-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-bottom: var(--space-3);
+  color: var(--ink2);
+  border-color: #6aa9b2;
+  text-shadow: none;
+}
+
+.tutorial-replay-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .compact-sidebar .progression-guide-button {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 5px;
+  padding: 8px;
+}
+
+.compact-sidebar .tutorial-replay-label {
+  display: none;
+}
+
+.compact-sidebar .tutorial-replay-button {
   width: 44px;
   height: 44px;
   margin: 0 auto 5px;
@@ -440,6 +489,36 @@ body.graph-panning {
   flex-direction: column;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.goal-filters {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.goal-filters input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+
+.goal-filter-count {
+  margin: 0;
+  color: var(--ink2);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.goal-filter-empty {
+  padding: 8px;
+  border: 1px solid #d5bd85;
+  border-radius: 6px;
+  color: var(--ink2);
+  background: #fffdf5;
+  font-size: 0.8rem;
+  text-align: center;
 }
 
 .goal-group {
@@ -601,7 +680,8 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid var(--honey2);
   outline-offset: 2px;
 }
@@ -685,6 +765,8 @@ input:focus-visible {
   height: 100%;
   max-width: 100%;
   max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   object-position: center;
 }
@@ -784,6 +866,13 @@ input:focus-visible {
   color: #795126;
 }
 
+.focus-exit-hint {
+  flex: none;
+  color: var(--ink2);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
 .graph-pan.panning {
   cursor: grabbing;
   user-select: none;
@@ -840,6 +929,24 @@ input:focus-visible {
   flex: none;
   align-items: center;
   gap: 10px;
+}
+
+.save-indicator {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid #d5bd85;
+  border-radius: 999px;
+  color: #844a08;
+  background: #fff1d2;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.save-indicator.saving-enabled {
+  border-color: #a6caa7;
+  color: #23643d;
+  background: #edf7ed;
 }
 
 .graph-toolbar .ctl {
@@ -1233,6 +1340,8 @@ svg.edges {
   height: 100%;
   max-width: 100%;
   max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   object-position: center;
 }
@@ -1304,6 +1413,24 @@ input {
   justify-content: space-between;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: var(--space-2);
+}
+
+.theme-toggle-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .storage-opt {
@@ -1813,6 +1940,28 @@ input {
   border-bottom: 1px solid #e8d8b8;
 }
 
+.item-guide-requirements {
+  border: 1px solid #e8d8b8;
+  border-radius: 8px;
+  background: #fffdf5;
+}
+
+.item-guide-requirements summary {
+  padding: 8px 10px;
+  color: #6b3f00;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.item-guide-requirements[open] summary {
+  border-bottom: 1px solid #e8d8b8;
+}
+
+.item-guide-requirements .goal-cost-list {
+  padding: 8px 10px;
+}
+
 .item-guide-details h3,
 .item-guide-ways h3 {
   margin: 0 0 8px;
@@ -2032,15 +2181,89 @@ input {
     background-attachment: scroll;
   }
   .app {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+  .mobile-view-tabs {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid #93612b;
+    border-radius: 10px;
+    background: #fff9e6;
+    box-shadow: 0 2px 5px rgba(53, 43, 30, 0.2);
+  }
+  .mobile-view-tabs button {
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+  .mobile-view-tabs button[aria-pressed=true] {
+    border-color: #6aa9b2;
+    color: #075c61;
+    background: #d7f0ee;
+  }
+  .mobile-view-tabs .mobile-help-button {
+    width: 40px;
+    padding: 7px;
+    font-size: 1.05rem;
   }
   .side {
+    display: none;
     position: static;
     height: auto;
     max-height: none;
+    grid-column: 1;
+  }
+  .main {
+    display: none;
+    grid-column: 1;
+    min-height: 0;
+  }
+  .app.mobile-goals-view .side {
+    display: block;
+  }
+  .app.mobile-plan-view .main {
+    display: flex;
   }
   .sidebar-resizer {
     display: none;
+  }
+  .graph-overlay {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    overflow: visible;
+  }
+  .graph-toolbar {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .graph-legend,
+  .graph-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .graph-legend {
+    white-space: normal;
+  }
+  .graph-export {
+    flex: 1 1 100%;
+    width: 100%;
+    white-space: normal;
+  }
+  .graph-focus-bar {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .focus-exit-hint {
+    flex: 1 1 100%;
   }
   .lists {
     grid-template-columns: 1fr;
@@ -2051,4 +2274,286 @@ input {
   * {
     transition: none !important;
   }
+}
+html[data-theme=dark] {
+  color-scheme: dark;
+  --ink: #f0eadc;
+  --ink2: #c1b9aa;
+  --ok: #8bd19b;
+  --bad: #ff9a90;
+  --red: #f17b75;
+  --blue: #82bdf0;
+  --honey2: #dfb14f;
+  --aqua: #73d5d0 ;
+}
+
+html[data-theme=dark] body {
+  color: var(--ink);
+  background-color: #111820;
+  background-image: linear-gradient(rgba(12, 17, 23, 0.84), rgba(12, 17, 23, 0.84)), url("../img/background.webp");
+}
+
+html[data-theme=dark] .side,
+html[data-theme=dark] .panel,
+html[data-theme=dark] .scroller,
+html[data-theme=dark] .craft-dialog,
+html[data-theme=dark] .tutorial-card {
+  color: var(--ink);
+  border-color: #52616d;
+  background: #232c36;
+  box-shadow: 0 3px 0 #10161c, inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme=dark] .graph-area {
+  background: rgba(25, 33, 42, 0.88);
+}
+
+html[data-theme=dark] .graph-overlay,
+html[data-theme=dark] .graph-focus-bar {
+  color: var(--ink);
+  background: #202832;
+}
+
+html[data-theme=dark] .mobile-view-tabs {
+  border-color: #52616d;
+  background: #202832;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme=dark] .graph-legend {
+  color: #e2e8e9;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 5px rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme=dark] .legend-step {
+  color: #8de0d9;
+}
+
+html[data-theme=dark] .legend-arrow {
+  color: #f2d394;
+}
+
+html[data-theme=dark] .legend-count,
+html[data-theme=dark] .ticket-balance,
+html[data-theme=dark] .graph-toolbar .ctl,
+html[data-theme=dark] .graph-craft-time,
+html[data-theme=dark] .graph-zoom {
+  color: var(--ink);
+  border-color: #596875;
+  background: #2b3540;
+}
+
+html[data-theme=dark] .graph-zoom button,
+html[data-theme=dark] .ghost,
+html[data-theme=dark] .seg button,
+html[data-theme=dark] .mobile-view-tabs button,
+html[data-theme=dark] .storage-settings,
+html[data-theme=dark] .credits-button {
+  color: #e0e9eb;
+  border-color: #60737f;
+  background: #303d48;
+  box-shadow: 0 2px 0 #111820, inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  text-shadow: none;
+}
+
+html[data-theme=dark] .seg button.on,
+html[data-theme=dark] .mobile-view-tabs button[aria-pressed=true] {
+  color: #fff0c1;
+  border-color: #c39a43;
+  background: #55431f;
+}
+
+html[data-theme=dark] .theme-toggle {
+  color: #e0e9eb;
+}
+
+html[data-theme=dark] .save-indicator {
+  color: #f2d394;
+  border-color: #8e7444;
+  background: #40351f;
+}
+
+html[data-theme=dark] .save-indicator.saving-enabled {
+  color: #a9e3b2;
+  border-color: #527d5b;
+  background: #20372a;
+}
+
+html[data-theme=dark] .side h2,
+html[data-theme=dark] .panel h2,
+html[data-theme=dark] .goal-group-toggle,
+html[data-theme=dark] .goal-group-label,
+html[data-theme=dark] .graph-focus-bar strong,
+html[data-theme=dark] .focus-crumb-current,
+html[data-theme=dark] .focus-crumb-arrow,
+html[data-theme=dark] .credits-dialog h2,
+html[data-theme=dark] .credits-dialog h3,
+html[data-theme=dark] .requirements-dialog h2,
+html[data-theme=dark] .craft-dialog-head h2,
+html[data-theme=dark] .item-guide-dialog-head h2,
+html[data-theme=dark] .item-guide-details h3,
+html[data-theme=dark] .item-guide-ways h3,
+html[data-theme=dark] .item-guide-requirements summary,
+html[data-theme=dark] .purchase-honey-option h3,
+html[data-theme=dark] .tutorial-card h2 {
+  color: #f0c66c;
+}
+
+html[data-theme=dark] .goal,
+html[data-theme=dark] .goal-filter-empty,
+html[data-theme=dark] .item-guide-requirements,
+html[data-theme=dark] .purchase-payment-choice,
+html[data-theme=dark] .recipe-plan-toggle,
+html[data-theme=dark] .progression-guide-frame-wrap {
+  color: var(--ink);
+  border-color: #526572;
+  background: #2b3540;
+}
+
+html[data-theme=dark] .goal.on {
+  color: #fff0c1;
+  border-color: #d3a33c;
+  background: #55431f;
+}
+
+html[data-theme=dark] .goal.on::after {
+  color: #ffe29a;
+}
+
+html[data-theme=dark] .goal-group-select {
+  border-color: #8995a0;
+  background-color: #1b242c;
+}
+
+html[data-theme=dark] .goal-group-select:checked {
+  border-color: #68c4b8;
+  background-color: #138b7c;
+}
+
+html[data-theme=dark] .graph-focus-bar,
+html[data-theme=dark] .focus-crumb-current,
+html[data-theme=dark] .colh,
+html[data-theme=dark] .elab {
+  color: #e6eceb;
+}
+
+html[data-theme=dark] .focus-crumb,
+html[data-theme=dark] .credits-dialog a,
+html[data-theme=dark] .item-guide-link {
+  color: #8de0d9;
+}
+
+html[data-theme=dark] .item-guide-link {
+  border-color: #607b84;
+  background: #293943;
+}
+
+html[data-theme=dark] .node {
+  color: var(--ink);
+  border-color: #52616d;
+  background: #2b3540;
+  box-shadow: 0 3px 0 #10161c, inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme=dark] .node.ok {
+  background: #20382c;
+}
+
+html[data-theme=dark] .node.craft-card {
+  background: #263842;
+}
+
+html[data-theme=dark] .recipe-plan-toggle {
+  color: #d5e4e6;
+}
+
+html[data-theme=dark] .purchase-hint,
+html[data-theme=dark] .need.todo,
+html[data-theme=dark] .goal-crafting-time {
+  color: #f0c66c;
+}
+
+html[data-theme=dark] .empty-plan {
+  color: var(--ink2);
+  border-color: #607b84;
+  background: #202d32;
+}
+
+html[data-theme=dark] .empty-plan h2 {
+  color: #8de0d9;
+}
+
+html[data-theme=dark] input,
+html[data-theme=dark] select {
+  color: var(--ink);
+  border-color: #687782;
+  background: #171f27;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme=dark] .requirements-dialog pre {
+  border-color: #596875;
+  background: #141a20;
+}
+
+html[data-theme=dark] .item-guide-details,
+html[data-theme=dark] .item-guide-requirements,
+html[data-theme=dark] .purchase-honey-option {
+  border-color: #4b5964;
+}
+
+html[data-theme=dark] .purchase-summary {
+  color: var(--ink);
+  background: #303a43;
+}
+
+html[data-theme=dark] .purchase-honey-warning {
+  color: #f3d992;
+  background: #463a21;
+}
+
+html[data-theme=dark] .canister {
+  color: #352b1e;
+  background: #ffdf71;
+}
+
+html[data-theme=dark] .canister .pct,
+html[data-theme=dark] .canister .goal-crafting-time {
+  color: #6b3f00;
+}
+
+html[data-theme=dark] .row {
+  border-top-color: #465761;
+}
+
+html[data-theme=dark] .bar {
+  background: #354752;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme=dark] .colh {
+  -webkit-text-stroke: 0.3px rgba(20, 25, 30, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.98), 0 0 5px rgba(0, 0, 0, 0.88);
+}
+
+html[data-theme=dark] .edge {
+  stroke: #70b9c9;
+}
+
+html[data-theme=dark] .edge.hot {
+  stroke: #f1b94c;
+}
+
+html[data-theme=dark] .elab {
+  fill: #f0eadc;
+  stroke: rgba(25, 31, 38, 0.96);
+}
+
+html[data-theme=dark] .elabbg {
+  fill: #303a45;
+  stroke: #8a754f;
+}
+
+html[data-theme=dark] .tutorial-step-count {
+  color: #e2bd70;
 }
