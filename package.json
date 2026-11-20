@@ -5,6 +5,7 @@
   "scripts": {
     "build:css": "sass --no-source-map assets/css/styles.scss assets/css/styles.css",
     "build": "npm run build:css && node build.mjs",
+    "test": "node --test assets/scripts/core.test.js",
     "preview": "node preview.mjs",
     "start": "npm run build && node preview.mjs"
   },

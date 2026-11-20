@@ -28,7 +28,7 @@ if (!catalog.items || typeof catalog.items !== "object") fail("items.json is mis
 if (!catalog.goals || typeof catalog.goals !== "object") fail("items.json is missing goals.");
 if (!catalog.goalShops || typeof catalog.goalShops !== "object") fail("items.json is missing goalShops.");
 
-const { items, goals: goalCatalog, goalShops } = catalog;
+const { items, goals: goalCatalog, goalShops, purchases = {} } = catalog;
 const itemKeys = Object.keys(items);
 const itemKeySet = new Set(itemKeys);
 
@@ -67,6 +67,17 @@ for (const [key, goal] of Object.entries(goals)) {
   if (typeof goal.icon !== "string") fail("goal " + key + " needs an icon fallback.");
 }
 
+for (const [key, purchase] of Object.entries(purchases)) {
+  if (!itemKeySet.has(key)) fail("purchase option uses unknown item " + key + ".");
+  if (!purchase || !itemKeySet.has(purchase.currency)) fail("purchase option for " + key + " needs a known currency.");
+  for (const field of ["currencyAmount", "itemAmount"]) {
+    if (!Number.isSafeInteger(purchase[field]) || purchase[field] <= 0) {
+      fail("purchase option for " + key + " has an invalid " + field + ".");
+    }
+  }
+  if (typeof purchase.shop !== "string" || !purchase.shop.trim()) fail("purchase option for " + key + " needs a shop name.");
+}
+
 // Crafted items, parents before ingredients (needed for the net-requirement pass).
 const order = [];
 {
@@ -101,6 +112,7 @@ const data = {
   recipes,
   goals,
   goalShops,
+  purchases,
   order,
   rawItems,
   initialInventory,

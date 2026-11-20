@@ -1,3 +1,10 @@
 {
-  "price": { "honey": 5000000000, "blue_extracts": 250, "oils": 150, "glitter": 100 }
+  "price": {
+    "honey": 5000000000,
+    "blue_extracts": 250,
+    "oils": 150,
+    "glitter": 100,
+    "diamond_eggs": 5,
+    "comforting_vials": 1
+  }
 }

@@ -1,6 +1,8 @@
 import {
+  BLENDER_CRAFT_MINUTES,
   MAX_INVENTORY_COUNT,
   compactNumber,
+  consumeGoalMaterials,
   createEmptyInventory,
   formatCraftingTime,
   formatNumber,
@@ -20,6 +22,8 @@ const RAWKEYS = D.rawItems || Object.keys(D.items).filter((k) => !D.recipes[k]);
 const STORAGE_KEYS = {
   inventory: "bssPlannerInventory",
   goals: "goals",
+  purchasedGoals: "bssPlannerPurchasedGoals",
+  hiddenCraftItems: "bssPlannerHiddenCraftItems",
   collapsedShops: "bssPlannerCollapsedShops",
   sidebarWidth: "bssPlannerSidebarWidth",
   graphView: "bssPlannerGraphView",
@@ -29,6 +33,8 @@ const STORAGE_KEYS = {
 const PROGRESS_STORAGE_KEYS = [
   STORAGE_KEYS.inventory,
   STORAGE_KEYS.goals,
+  STORAGE_KEYS.purchasedGoals,
+  STORAGE_KEYS.hiddenCraftItems,
   STORAGE_KEYS.collapsedShops,
   STORAGE_KEYS.sidebarWidth,
   STORAGE_KEYS.graphView,
@@ -72,13 +78,24 @@ if (storageConsent) {
   const savedGoals = readStoredJson(STORAGE_KEYS.goals, []);
   if (Array.isArray(savedGoals)) sel = savedGoals.filter((g) => D.goals[g]);
 }
-if (!sel.length) sel = ["canister"];
+let purchasedGoals = new Set();
+if (storageConsent) {
+  const savedPurchasedGoals = readStoredJson(STORAGE_KEYS.purchasedGoals, []);
+  if (Array.isArray(savedPurchasedGoals)) {
+    purchasedGoals = new Set(savedPurchasedGoals.filter((goal) =>
+      typeof goal === "string" && Object.hasOwn(D.goals, goal)));
+  }
+}
 const collapsedGoalShops = new Set();
 if (storageConsent) {
   const savedShops = readStoredJson(COLLAPSED_SHOPS_STORAGE_KEY, []);
   if (Array.isArray(savedShops)) savedShops.filter((shop) => typeof shop === "string").forEach((shop) => collapsedGoalShops.add(shop));
 }
 let inv = {}, step = 10, busy = false;
+const savedHiddenCraftItems = storageConsent ? readStoredJson(STORAGE_KEYS.hiddenCraftItems, []) : [];
+let hiddenCraftItems = new Set(
+  Array.isArray(savedHiddenCraftItems) ? savedHiddenCraftItems.filter((key) => D.recipes[key]) : [],
+);
 const STEP_SIZES = [1, 10, 100, 1000];
 if (storageConsent) {
   const savedStep = Number(storageGet(STORAGE_KEYS.step));
@@ -305,6 +322,8 @@ function saveInventory() {
   if (!storageConsent || !storageToggle.checked) return true;
   const saved = storageSet(INVENTORY_STORAGE_KEY, JSON.stringify(inv));
   storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
+  storageSet(STORAGE_KEYS.purchasedGoals, JSON.stringify([...purchasedGoals]));
+  storageSet(STORAGE_KEYS.hiddenCraftItems, JSON.stringify([...hiddenCraftItems]));
   storageSet(STORAGE_KEYS.step, String(step));
   storageSet(SIDEBAR_WIDTH_STORAGE_KEY, getComputedStyle(app).getPropertyValue("--sidebar-width").trim());
   return saved;
@@ -312,6 +331,18 @@ function saveInventory() {
 
 inv = loadInventory();
 storageToggle.checked = storageConsent;
+const ticketBalance = $("ticket-balance");
+ticketBalance.value = num(inv.tickets || 0);
+ticketBalance.onfocus = () => ticketBalance.select();
+ticketBalance.onchange = () => {
+  const amount = parse(ticketBalance.value);
+  if (amount == null) {
+    status("Enter a whole number of tickets.", "error");
+    render();
+    return;
+  }
+  send({ item: "tickets", action: "set", amount });
+};
 const storageDialog = $("storage-consent-dialog");
 storageToggle.onchange = () => {
   if (storageToggle.checked) {
@@ -337,6 +368,15 @@ $("storage-allow").onclick = () => {
     const validGoals = savedGoals.filter((goal) => D.goals[goal]);
     if (validGoals.length) sel = validGoals;
   }
+  const savedPurchasedGoals = readStoredJson(STORAGE_KEYS.purchasedGoals, []);
+  if (Array.isArray(savedPurchasedGoals)) {
+    purchasedGoals = new Set(savedPurchasedGoals.filter((goal) =>
+      typeof goal === "string" && Object.hasOwn(D.goals, goal)));
+  }
+  const savedHiddenItems = readStoredJson(STORAGE_KEYS.hiddenCraftItems, []);
+  if (Array.isArray(savedHiddenItems)) {
+    hiddenCraftItems = new Set(savedHiddenItems.filter((key) => D.recipes[key]));
+  }
   const consentSaved = storageSet(STORAGE_CONSENT_KEY, "granted");
   storageConsent = consentSaved;
   storageDeclined = false;
@@ -359,10 +399,24 @@ $("storage-settings").onclick = () => storageDialog.showModal();
 const creditsDialog = $("credits-dialog");
 $("credits-open").addEventListener("click", () => creditsDialog.showModal());
 $("credits-close").addEventListener("click", () => creditsDialog.close());
+const progressionGuideDialog = $("progression-guide-dialog");
+const progressionGuideFrame = $("progression-guide-frame");
+$("progression-guide-open").addEventListener("click", () => {
+  if (!progressionGuideFrame.hasAttribute("src")) {
+    progressionGuideFrame.src = progressionGuideFrame.dataset.src;
+  }
+  progressionGuideDialog.showModal();
+});
+$("progression-guide-close").addEventListener("click", () => progressionGuideDialog.close());
+$("progression-guide-close-footer").addEventListener("click", () => progressionGuideDialog.close());
+const itemGuideDialog = $("item-guide-dialog");
+$("item-guide-close").addEventListener("click", () => itemGuideDialog.close());
+$("item-guide-close-footer").addEventListener("click", () => itemGuideDialog.close());
 if (!storageConsent && !storageDeclined) storageDialog.showModal();
 function openCraftDialog(item, max) {
   const dialog = $("craft-dialog"), amount = $("craft-amount");
   const decrement = $("craft-sub"), increment = $("craft-add"), confirmButton = $("craft-confirm");
+  const timeEstimate = $("craft-time-estimate");
   $("craft-dialog-item").textContent = D.items[item].name;
   const itemIcon = ico(D.items[item].icon, item); itemIcon.id = "craft-item-icon"; itemIcon.classList.add("craft-item-icon");
   $("craft-item-icon").replaceWith(itemIcon);
@@ -372,10 +426,16 @@ function openCraftDialog(item, max) {
   amount.value = "1";
   const updateSteppers = () => {
     const quantity = parse(amount.value);
+    const valid = max > 0 && quantity != null && quantity >= 1 && quantity <= max;
     decrement.disabled = quantity == null || quantity <= 1;
     increment.disabled = quantity == null || quantity >= max;
     $("craft-max").disabled = max <= 0;
-    confirmButton.disabled = max <= 0 || quantity == null || quantity < 1 || quantity > max;
+    confirmButton.disabled = !valid;
+    confirmButton.textContent = valid ? "Blend " + fmt(quantity) : "Blend";
+    timeEstimate.textContent = valid
+      ? "Blender time: " + formatCraftingTime(quantity * BLENDER_CRAFT_MINUTES)
+      : "";
+    timeEstimate.hidden = !valid;
   };
   decrement.onclick = () => {
     const quantity = parse(amount.value);
@@ -404,21 +464,34 @@ function openCraftDialog(item, max) {
 }
 
 function plan(have, goals = sel) {
-  return makePlan(D, have, goals);
+  return makePlan(D, have, goals, { gatherOnly: hiddenCraftItems });
 }
 function totalCraftingMinutes(P) {
   return totalCraftingMinutesFor(D, P);
 }
+function gatherKeys() {
+  return [...new Set([...RAWKEYS, ...hiddenCraftItems])];
+}
 let GROSS = plan({}).demand;
-const GOAL_GROSS = Object.fromEntries(Object.keys(D.goals).map((goal) => [goal, plan({}, [goal])]));
+let GOAL_GROSS = Object.fromEntries(Object.keys(D.goals).map((goal) => [goal, plan({}, [goal])]));
 function refreshGross() {
   GROSS = plan({}).demand;
+  GOAL_GROSS = Object.fromEntries(Object.keys(D.goals).map((goal) => [goal, plan({}, [goal])]));
 }
 
 function remaining(P, k) {
   return remainingFor(D, P, inv, k);
 }
 const pctOf = (P, k) => percentComplete(GROSS, D, P, inv, k);
+function countedItemName(key, amount) {
+  const name = D.items[key].name;
+  if (amount === 1 && (key === "tickets" || key === "gumdrops" || key === "stingers")) return name.slice(0, -1);
+  return name;
+}
+
+const ROYAL_JELLY_HONEY_MAX_PRICE = 1_000_000;
+const ROYAL_JELLY_HONEY_START_PRICE = 250_000;
+const ROYAL_JELLY_HONEY_PRICE_STEP = 10_000;
 
 async function send(body) {
   if (busy) return;
@@ -426,26 +499,45 @@ async function send(body) {
   const { item, action } = body ?? {}, amount = body?.amount ?? 1;
   let message = "";
   if (action === "reset") {
-    inv = emptyInventory(); message = "Everything reset to 0";
+    inv = emptyInventory(); purchasedGoals.clear(); message = "Everything reset to 0";
   } else if (action === "import") {
     const incoming = body?.inventory;
     const validation = validateInventory(ITEM_KEYS, incoming);
     if (!validation.ok) {
       status(validation.error, "error"); busy = false; return;
     }
-    inv = normalizeInventory(incoming); message = "Inventory imported";
+    inv = normalizeInventory(incoming); purchasedGoals.clear(); message = "Inventory imported";
   } else {
-    if (typeof item !== "string" || !Object.hasOwn(D.items, item)) {
+    const validItem = typeof item === "string"
+      && (action === "purchaseGoal" ? Object.hasOwn(D.goals, item) : Object.hasOwn(D.items, item));
+    if (!validItem) {
       status("Invalid item", "error"); busy = false; return;
     }
-    if (!["add", "sub", "set", "craft"].includes(action)) {
+    if (!["add", "sub", "set", "craft", "buy", "buyHoney", "purchaseGoal"].includes(action)) {
       status("Invalid action", "error"); busy = false; return;
     }
     if (!Number.isSafeInteger(amount) || amount < 0 || amount > MAX_INVENTORY_COUNT) {
       status("Invalid amount", "error"); busy = false; return;
     }
-    const label = D.items[item].name;
-    if (action === "craft") {
+    const label = action === "purchaseGoal" ? D.goals[item].name : D.items[item].name;
+    if (action === "purchaseGoal") {
+      if (amount !== 1) {
+        status("A goal can only be purchased one at a time.", "error"); busy = false; return;
+      }
+      const updatedInventory = consumeGoalMaterials(D, inv, item, { gatherOnly: hiddenCraftItems });
+      if (!updatedInventory) {
+        status("Gather all required ingredients before purchasing " + label + ".", "error");
+        busy = false;
+        return;
+      }
+      inv = updatedInventory;
+      purchasedGoals.add(item);
+      sel = sel.filter((goal) => goal !== item);
+      selectedFocusPath = [];
+      refreshGross();
+      buildChips();
+      message = "Purchased " + label + " with the required ingredients";
+    } else if (action === "craft") {
       const recipe = D.recipes[item];
       if (!recipe) { status(label + " can't be crafted", "error"); busy = false; return; }
       if (inv[item] > MAX_INVENTORY_COUNT - amount) {
@@ -460,6 +552,43 @@ async function send(body) {
       }
       for (const [ingredient, quantity] of Object.entries(recipe)) inv[ingredient] -= quantity * amount;
       inv[item] += amount; message = "Crafted " + fmt(amount) + " " + label;
+    } else if (action === "buy") {
+      const purchase = D.purchases?.[item];
+      if (!purchase || amount < 1) {
+        status("That item can't be bought here.", "error"); busy = false; return;
+      }
+      const itemAmount = purchase.itemAmount * amount;
+      const currencyAmount = purchase.currencyAmount * amount;
+      if (!Number.isSafeInteger(itemAmount) || !Number.isSafeInteger(currencyAmount)
+        || inv[item] > MAX_INVENTORY_COUNT - itemAmount) {
+        status("That purchase exceeds the maximum inventory count.", "error"); busy = false; return;
+      }
+      if ((inv[purchase.currency] || 0) < currencyAmount) {
+        status("Not enough " + D.items[purchase.currency].name + " (need " + fmt(currencyAmount)
+          + ", have " + fmt(inv[purchase.currency] || 0) + ").", "error");
+        busy = false; return;
+      }
+      inv[purchase.currency] -= currencyAmount;
+      inv[item] += itemAmount;
+      selectedFocusPath = [];
+      message = "Bought " + fmt(itemAmount) + " " + countedItemName(item, itemAmount) + " for "
+        + fmt(currencyAmount) + " " + countedItemName(purchase.currency, currencyAmount);
+    } else if (action === "buyHoney") {
+      if (item !== "royal_jellies" || amount < 1) {
+        status("Honey purchases are only available for Royal Jelly.", "error"); busy = false; return;
+      }
+      const honeyCost = amount * ROYAL_JELLY_HONEY_MAX_PRICE;
+      if (!Number.isSafeInteger(honeyCost) || inv[item] > MAX_INVENTORY_COUNT - amount) {
+        status("That purchase exceeds the maximum inventory count.", "error"); busy = false; return;
+      }
+      if ((inv.honey || 0) < honeyCost) {
+        status("Not enough Honey (need " + fmt(honeyCost) + ", have " + fmt(inv.honey || 0) + ").", "error");
+        busy = false; return;
+      }
+      inv.honey -= honeyCost;
+      inv[item] += amount;
+      selectedFocusPath = [];
+      message = "Bought " + fmt(amount) + " Royal Jelly for " + fmt(honeyCost) + " Honey (maximum-price estimate)";
     } else if (action === "set") {
       inv[item] = amount; message = label + " set to " + fmt(amount);
     } else if (action === "add") {
@@ -488,6 +617,20 @@ function btn(label, cls, fn, disabled) {
   const b = h("button", cls, label); b.disabled = !!disabled; b.onclick = fn; return b;
 }
 
+function uiIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const paths = {
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    "eye-off": '<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A11 11 0 0 1 12 5c6.5 0 10 7 10 7a14 14 0 0 1-3.2 3.8M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a10 10 0 0 0 3-.5"/>',
+    buy: '<path d="M3 4h2l2.2 11h10.9l2-8H6"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+  };
+  svg.innerHTML = paths[name];
+  return svg;
+}
+
 // Icons are resolved from a build-time extension map, so browsers never request
 // a format that does not exist. Emoji remain the fallback for missing images.
 const iconState = {};
@@ -509,81 +652,331 @@ function ico(emoji, key) {
   return span;
 }
 
-function positionTooltip(anchor, tooltip) {
-  if (!tooltip.matches(":popover-open")) tooltip.showPopover();
-  const anchorRect = anchor.getBoundingClientRect(), popup = tooltip.getBoundingClientRect();
-  const left = Math.max(8, Math.min(anchorRect.right - popup.width, innerWidth - popup.width - 8));
-  const top = anchorRect.bottom + popup.height + 8 <= innerHeight
-    ? anchorRect.bottom + 6
-    : Math.max(8, anchorRect.top - popup.height - 6);
-  tooltip.style.left = left + "px";
-  tooltip.style.top = top + "px";
+const WIKI_ITEM_PAGES = {
+  coconuts: "Coconut",
+  sunflower_seeds: "Sunflower Seed",
+  pineapples: "Pineapple",
+  strawberries: "Strawberry",
+  blueberries: "Blueberry",
+  royal_jellies: "Royal Jelly",
+  magic_beans: "Magic Bean",
+  honeysuckles: "Honeysuckle",
+  neonberries: "Neonberry",
+  bitterberries: "Bitterberry",
+  stingers: "Stinger",
+  spirit_petals: "Spirit Petal",
+  refreshing_vials: "Refreshing Vial",
+  satisfying_vials: "Satisfying Vial",
+  motivating_vials: "Motivating Vial",
+  oils: "Oil",
+  enzymes: "Enzymes",
+  red_extracts: "Red Extract",
+  blue_extracts: "Blue Extract",
+  tropical_drinks: "Tropical Drink",
+  moon_charms: "Moon Charm",
+  star_jellies: "Royal Jelly#Star_Jelly",
+  soft_waxes: "Soft Wax",
+  hard_waxes: "Hard Wax",
+  caustic_waxes: "Caustic Wax",
+  purple_potions: "Purple Potion",
+  super_smoothies: "Super Smoothie",
+  turpentines: "Turpentine",
+  treats: "Treat",
+  gold_eggs: "Egg#Gold_Egg",
+  diamond_eggs: "Egg#Diamond_Egg",
+  invigorating_vials: "Invigorating Vial",
+  comforting_vials: "Comforting Vial",
+  swirled_waxes: "Swirled Wax",
+  jelly_beans: "Jelly Beans",
+  cogs: "Cog",
+  red_drives: "Drives#Red_Drive",
+  blue_drives: "Drives#Blue_Drive",
+  white_drives: "Drives#White_Drive",
+  glitched_drives: "Drives#Glitched_Drive",
+  cadet_badges: "Badges",
+  hotshot_badges: "Badges",
+  ace_badges: "Badges",
+  master_badges: "Badges",
+  grandmaster_badges: "Badges",
+  riley_quests: "Riley Bee",
+  bucko_quests: "Bucko Bee",
+  gold_cog_amulets: "Cog Amulet",
+  diamond_cog_amulets: "Cog Amulet",
+  tickets: "Ticket",
+};
+
+const ITEM_OBTAINMENT_GUIDES = {
+  honey: [
+    "Convert pollen at your hive; some pollen can also be instantly converted.",
+    "Honey also comes from quests, mobs, field tokens, Sparkles, Goo, the Ant Challenge, and Mythic Meteor Showers.",
+  ],
+  coconuts: [
+    "Defeat Coconut Crab, farm Coconut Field, or grow sprouts there; the Coconut Dispenser also grants coconuts.",
+    "Other sources include Armored Aphids, Memory Matches, planters, Puffshrooms, and Sticker Stack rewards.",
+  ],
+  magic_beans: [
+    "Buy them for 20 tickets at the Magic Bean Shop, or earn them from Stick Bug Challenge, Wind Shrine, Memory Match, and quests.",
+    "They can also drop from mobs, sprouts, planters, leaves, and field pollen.",
+  ],
+  sunflower_seeds: [
+    "Collect them in Sunflower Field; leaves, Sparkles, and sprouts there can also yield seeds.",
+    "Other sources include mobs, planters, Memory Matches, quests, and Sticker Stack rewards.",
+  ],
+  pineapples: [
+    "Collect them in Pineapple Patch; using the Treat Dispenser also grants one.",
+    "Ant Challenge, Memory Matches, quests, mobs, sprouts, planters, Sparkles, and Puffshrooms can also reward pineapples.",
+  ],
+  strawberries: [
+    "Use the Strawberry Dispenser near Red HQ, or collect them in red fields such as Strawberry, Mushroom, Rose, and Pepper Patch.",
+    "They can also drop from Ladybugs, Scorpions, King Beetle, sprouts, planters, Puffshrooms, and Memory Matches.",
+  ],
+  blueberries: [
+    "Use the Blueberry Dispenser inside Blue HQ, or collect them in blue fields.",
+    "Other sources include mobs, field leaves, sprouts, planters, Puffshrooms, Memory Matches, and quests.",
+  ],
+  tropical_drinks: [
+    "Brown Bear and Black Bear quests can reward them; Coconut Crab drops them, with amounts based on defeat time.",
+    "Other sources include Coconut Field sprouts, Memory Matches, Windy Bee, Armored Aphids, and fully grown planters harvested in Coconut Field.",
+  ],
+  stingers: [
+    "Rogue Vicious Bee drops stingers; rare drops can also come from Aphids, Scorpions, and Spiders.",
+    "Other sources include the Ticket Shop, quests, Memory Match, and planters.",
+  ],
+  oils: [
+    "Boss drops include Tunnel Bear, Coconut Crab, Stump Snail, and Stick Bug; some other mobs can drop Oil too.",
+    "Also awarded by Stick Bug and Robo Bear Challenges, Wind Shrine donations, Memory Matches, and quests.",
+    "Oil can also drop in Sunflower Field and from sprouts or planters.",
+  ],
+  enzymes: [
+    "Drops include Armored Aphid, King Beetle, Tunnel Bear, Coconut Crab, Stick Bug, and Stick Bug Challenge rewards.",
+    "Also from Memory Matches, quests, Pineapple Patch, sprouts, and planters.",
+  ],
+  red_extracts: [
+    "Other sources include Wind Shrine rewards, Mega or Extreme Memory Matches, Sticker Stack rewards, and quests.",
+    "Rare drops can come from red-field mobs, sprouts, planters, and leaves.",
+  ],
+  blue_extracts: [
+    "Other sources include Wind Shrine rewards, Mega or Extreme Memory Matches, bundles, and Sticker Stack rewards.",
+    "Drops can come from blue-field mobs, sprouts, planters, and leaves.",
+  ],
+  gumdrops: [
+    "Buy 3 at a time from the Gumdrop Shop for 1 ticket.",
+    "Other sources include quests, Stick Bug Challenge rewards, planters, mobs, Puffshrooms, sprouts, and Memory Matches.",
+  ],
+  glue: [
+    "Claim Glue from the Glue Dispenser in Gummy Bear's Lair; quests, Wind Shrine rewards, Memory Matches, and challenges can also give it.",
+    "Drops include Spider, Werewolf, Puffshroom, King Beetle, Coconut Crab, and Stump Snail; planters and some fields can yield it too.",
+  ],
+  neonberries: [
+    "Robo Bear Challenge commonly rewards them; drops can come from mobs, sprouts, planters, and Mythic Meteors.",
+    "They can also be found in some fields, from Sparkles, quests, and Sticker Stack rewards.",
+  ],
+  bitterberries: [
+    "Drops include Coconut Crab, Mondo Chick, Commando Chick, and other mobs; they can also come from fields, sprouts, and planters.",
+    "Quests, Mythic Meteors, Cub Buddy, and Sticker Stack rewards can provide Bitterberries too.",
+  ],
+  royal_jellies: [
+    "Buy from the Royal Jelly Shop for Honey: it starts at 250,000 and rises by 10,000 per jelly to a 1,000,000 cap.",
+    "The Royal Jelly Dispenser also sells them for 6 tickets; quests, tokens, mobs, planters, Memory Matches, and other rewards can provide them too.",
+  ],
+  diamond_eggs: [
+    "A guaranteed Diamond Egg token is past the Bear Gate, beneath Onett's platform.",
+    "Buy one from the Ticket Tent for 400 tickets. Quests, Robo Bear Challenge, Extreme Memory Matches, mobs, sprouts, planters, and other rare rewards can also provide Diamond Eggs.",
+  ],
+  tickets: [
+    "Earn them from badges and some bear quests, or buy them with Honey at the Ticket Shop.",
+    "Other sources include the Wealth Clock, Memory Matches, planters, mobs, Mythic Meteors, Stockings, stickers, and codes.",
+  ],
+};
+
+function wikiGuideUrl(itemKey, itemName, goal = false) {
+  const [page, fragment] = goal ? [itemName, ""] : (WIKI_ITEM_PAGES[itemKey] || itemName).split("#");
+  return "https://bee-swarm-simulator.fandom.com/wiki/"
+    + encodeURIComponent(page.replace(/ /g, "_"))
+    + (fragment ? "#" + fragment : "");
 }
 
-function wireHoverTooltip(trigger, tooltip) {
-  let closeTimer = 0;
-  const open = () => {
-    clearTimeout(closeTimer);
-    positionTooltip(trigger, tooltip);
+function openItemGuide(itemKey, goal = false) {
+  const itemName = goal ? D.goals[itemKey].name : D.items[itemKey].name;
+  const recipe = goal ? null : D.recipes[itemKey];
+  const title = $("item-guide-title");
+  const details = $("item-guide-details");
+  const ways = $("item-guide-ways");
+  const wikiLink = $("item-guide-wiki");
+  title.textContent = itemName + (goal
+    ? " — requirements"
+    : recipe ? " — recipe and ways to obtain" : " — ways to obtain");
+  details.replaceChildren();
+  ways.replaceChildren();
+
+  if (goal) {
+    details.append(h("h3", "", "Requirements"));
+    const costs = h("div", "goal-cost-list");
+    for (const [key, quantity] of Object.entries(D.goals[itemKey].cost)) {
+      const row = h("div", "goal-cost");
+      row.append(ico(D.items[key].icon, key), h("span", "", D.items[key].name),
+        h("b", "goal-cost-count", fmt(inv[key] || 0) + " / " + fmt(quantity)));
+      costs.append(row);
+    }
+    details.append(costs);
+  } else if (recipe) {
+    details.append(h("h3", "", "Blender recipe"));
+    const ingredients = h("div", "goal-cost-list");
+    for (const [key, quantity] of Object.entries(recipe)) {
+      const row = h("div", "goal-cost");
+      row.append(ico(D.items[key].icon, key), h("span", "", D.items[key].name),
+        h("b", "goal-cost-count", fmt(quantity) + " per craft · " + fmt(inv[key] || 0) + " owned"));
+      ingredients.append(row);
+    }
+    details.append(ingredients);
+  } else {
+    details.append(h("p", "item-guide-no-recipe", "BeePrint has no Blender recipe listed for this item."));
+  }
+
+  const obtainment = goal
+    ? (D.goalShops[itemKey] ? ["Purchase it from " + D.goalShops[itemKey] + " using the requirements shown above."] : [])
+    : [
+      ...(recipe ? ["Craft it at the Blender using the recipe shown above."] : []),
+      ...(D.purchases?.[itemKey]
+        ? ["Buy it from " + D.purchases[itemKey].shop + " using "
+          + countedItemName(D.purchases[itemKey].currency, D.purchases[itemKey].currencyAmount) + "."]
+        : []),
+      ...(ITEM_OBTAINMENT_GUIDES[itemKey] || []),
+    ];
+  const guideItems = obtainment.length
+    ? obtainment
+    : ["See the Wiki guide for the currently listed ways to obtain this item."];
+  for (const text of guideItems) ways.append(h("li", "", text));
+
+  wikiLink.href = wikiGuideUrl(itemKey, itemName, goal);
+  $("item-guide-dialog").showModal();
+}
+
+function openPurchaseDialog(item) {
+  const purchase = D.purchases?.[item];
+  if (!purchase) {
+    status("That item can't be bought here.", "error");
+    return;
+  }
+  const dialog = $("purchase-dialog"), quantityInput = $("purchase-quantity");
+  const confirmButton = $("purchase-confirm"), total = $("purchase-summary");
+  $("purchase-dialog-item").textContent = D.items[item].name;
+  quantityInput.value = "1";
+  const honeyOption = $("purchase-honey-option");
+  const honeyRadio = $("purchase-payment-honey");
+  const ticketRadio = $("purchase-payment-tickets");
+  const honeyWarning = $("purchase-honey-warning");
+  const honeyPurchaseAvailable = item === "royal_jellies";
+  honeyOption.hidden = !honeyPurchaseAvailable;
+  $("purchase-quantity-label").textContent = honeyPurchaseAvailable ? "Royal Jellies to buy" : "Shop bundles";
+  $("purchase-sub").setAttribute("aria-label", honeyPurchaseAvailable ? "Decrease Royal Jelly amount" : "Decrease bundles");
+  $("purchase-add").setAttribute("aria-label", honeyPurchaseAvailable ? "Increase Royal Jelly amount" : "Increase bundles");
+  if (honeyPurchaseAvailable) {
+    ticketRadio.checked = true;
+    honeyRadio.checked = false;
+    honeyWarning.textContent = "Warning: the Royal Jelly Shop price starts at "
+      + fmt(ROYAL_JELLY_HONEY_START_PRICE) + " Honey and rises by " + fmt(ROYAL_JELLY_HONEY_PRICE_STEP)
+      + " per purchase, up to " + fmt(ROYAL_JELLY_HONEY_MAX_PRICE)
+      + ". This estimate uses the maximum price for every jelly. Check the current in-game price before buying.";
+  }
+  const selectedPurchase = () => honeyPurchaseAvailable && honeyRadio.checked
+    ? {
+      itemAmount: 1,
+      currencyAmount: ROYAL_JELLY_HONEY_MAX_PRICE,
+      currency: "honey",
+      shop: "Royal Jelly Shop",
+      action: "buyHoney",
+    }
+    : { ...purchase, action: "buy" };
+  const updatePurchase = () => {
+    const bundles = Number(quantityInput.value);
+    const option = selectedPurchase();
+    const itemAmount = option.itemAmount * bundles;
+    const currencyAmount = option.currencyAmount * bundles;
+    const valid = Number.isSafeInteger(bundles) && bundles > 0
+      && Number.isSafeInteger(itemAmount) && Number.isSafeInteger(currencyAmount)
+      && inv[item] <= MAX_INVENTORY_COUNT - itemAmount;
+    const canAfford = valid && (inv[option.currency] || 0) >= currencyAmount;
+    $("purchase-shop").textContent = "Available at " + option.shop;
+    $("purchase-rate").textContent = (honeyPurchaseAvailable ? "Rate: " : "Each bundle: ")
+      + fmt(option.itemAmount) + " " + countedItemName(item, option.itemAmount) + " for "
+      + fmt(option.currencyAmount) + " " + countedItemName(option.currency, option.currencyAmount);
+    total.textContent = "Total: " + (valid ? fmt(itemAmount) + " " + countedItemName(item, itemAmount) : "—")
+      + " · Cost: " + (valid ? fmt(currencyAmount) + " " + countedItemName(option.currency, currencyAmount) : "—")
+      + " · You have: " + fmt(inv[option.currency] || 0) + " " + D.items[option.currency].name;
+    confirmButton.disabled = !canAfford;
+    honeyWarning.hidden = !honeyPurchaseAvailable || !honeyRadio.checked;
+    $("purchase-sub").disabled = !Number.isSafeInteger(bundles) || bundles <= 1;
   };
-  const scheduleClose = () => {
-    clearTimeout(closeTimer);
-    closeTimer = setTimeout(() => {
-      if (!trigger.matches(":hover") && !tooltip.matches(":hover") && !trigger.matches(":focus")) tooltip.hidePopover();
-    }, 140);
+  ticketRadio.onchange = updatePurchase;
+  honeyRadio.onchange = updatePurchase;
+  $("purchase-sub").onclick = () => {
+    const bundles = Number(quantityInput.value);
+    quantityInput.value = String(Math.max(1, Number.isSafeInteger(bundles) ? bundles - 1 : 1));
+    updatePurchase();
   };
-  trigger.addEventListener("pointerenter", open);
-  trigger.addEventListener("pointerleave", scheduleClose);
-  trigger.addEventListener("focus", open);
-  trigger.addEventListener("blur", scheduleClose);
-  tooltip.addEventListener("pointerenter", () => clearTimeout(closeTimer));
-  tooltip.addEventListener("pointerleave", scheduleClose);
+  $("purchase-add").onclick = () => {
+    const bundles = Number(quantityInput.value);
+    quantityInput.value = String((Number.isSafeInteger(bundles) && bundles > 0 ? bundles : 1) + 1);
+    updatePurchase();
+  };
+  quantityInput.oninput = updatePurchase;
+  quantityInput.onkeydown = (event) => {
+    if (event.key === "Enter" && !confirmButton.disabled) confirmButton.click();
+  };
+  $("purchase-cancel").onclick = () => dialog.close();
+  confirmButton.onclick = () => {
+    const bundles = Number(quantityInput.value);
+    if (confirmButton.disabled || !Number.isSafeInteger(bundles)) return;
+    const option = selectedPurchase();
+    dialog.close();
+    send({ item, action: option.action, amount: bundles });
+  };
+  updatePurchase();
+  dialog.showModal();
+  quantityInput.focus();
+  quantityInput.select();
 }
 
 function makeNode(k, P) {
   const it = D.items[k], recipe = D.recipes[k];
   const own = inv[k] || 0, need = remaining(P, k), pct = pctOf(P, k);
   const canCraft = recipe ? Math.min(...Object.entries(recipe).map(([i, q]) => Math.floor((inv[i] || 0) / q))) : 0;
-  const best = recipe ? Math.min(canCraft, P.craft[k]) : 0;
+  const best = recipe ? Math.min(canCraft, Math.max(0, (P.demand[k] || 0) - own)) : 0;
   const n = h("div", "node" + (k === "red_extracts" ? " red" : k === "blue_extracts" ? " blue" : "") + (need === 0 ? " ok" : "") + (recipe ? " craft-card" : ""));
   n.id = "n-" + k;
 
   const hd = h("div", "nh"); hd.append(ico(it.icon, k), h("span", "", it.name)); n.append(hd);
   if (recipe) {
-    const info = h("div", "recipe-info");
-    const trigger = h("span", "recipe-info-trigger", "?");
-    trigger.tabIndex = 0;
-    trigger.setAttribute("aria-label", "Show " + it.name + " recipe");
-    const mobileTrigger = btn("?", "recipe-info-button", () => {});
-    mobileTrigger.setAttribute("aria-label", "Show " + it.name + " recipe");
-    const tooltip = h("div", "goal-tooltip");
-    tooltip.id = "recipe-tip-" + k;
-    tooltip.setAttribute("popover", "auto");
-    tooltip.setAttribute("role", "tooltip");
-    tooltip.append(h("strong", "goal-tooltip-title", "Recipe for " + it.name));
-    const ingredients = h("div", "goal-cost-list");
-    for (const [ingredient, quantity] of Object.entries(recipe)) {
-      const row = h("div", "goal-cost");
-      row.append(
-        ico(D.items[ingredient].icon, ingredient),
-        h("span", "", D.items[ingredient].name),
-        h("b", "goal-cost-count", fmt(quantity) + " per craft · " + fmt(inv[ingredient] || 0) + " owned"),
-      );
-      ingredients.append(row);
-    }
-    tooltip.append(ingredients);
-    trigger.setAttribute("aria-describedby", tooltip.id);
-    mobileTrigger.setAttribute("aria-describedby", tooltip.id);
-    mobileTrigger.setAttribute("aria-expanded", "false");
-    mobileTrigger.onclick = () => {
-      if (tooltip.matches(":popover-open")) tooltip.hidePopover();
-      else positionTooltip(mobileTrigger, tooltip);
-    };
-    tooltip.addEventListener("toggle", () => mobileTrigger.setAttribute("aria-expanded", String(tooltip.matches(":popover-open"))));
-    info.append(trigger, mobileTrigger);
-    n.append(info, tooltip);
-    wireHoverTooltip(trigger, tooltip);
+    const hideIngredients = hiddenCraftItems.has(k);
+    const hideButton = btn("", "recipe-plan-toggle", () => {
+      const hide = !hiddenCraftItems.has(k);
+      if (hide) hiddenCraftItems.add(k);
+      else hiddenCraftItems.delete(k);
+      selectedFocusPath = [];
+      refreshGross();
+      if (storageConsent && storageToggle.checked) {
+        storageSet(STORAGE_KEYS.hiddenCraftItems, JSON.stringify([...hiddenCraftItems]));
+      }
+      render(true);
+      status(hide
+        ? it.name + " will be planned as gather/buy-only."
+        : it.name + " ingredients are included in the plan.", "ok");
+    });
+    hideButton.append(uiIcon(hideIngredients ? "eye-off" : "eye"));
+    hideButton.setAttribute("aria-label", (hideIngredients ? "Show" : "Hide") + " " + it.name + " ingredients");
+    hideButton.setAttribute("aria-pressed", String(hideIngredients));
+    hideButton.title = hideIngredients ? "Show recipe ingredients" : "Hide recipe ingredients";
+    n.append(hideButton);
   }
+
+  const info = h("div", "recipe-info");
+  const trigger = btn("?", "recipe-info-button", () => openItemGuide(k));
+  trigger.setAttribute("aria-label", "More about " + it.name);
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-controls", "item-guide-dialog");
+  info.append(trigger);
+  n.append(info);
 
   const own$ = h("div", "own"), input = h("input"); input.value = k === "honey" ? fmt(own) : num(own);
   input.setAttribute("aria-label", it.name + " owned");
@@ -602,7 +995,7 @@ function makeNode(k, P) {
   plus.title = "Add " + step + lab;
   own$.append(input, plus, minus);
   if (recipe) {
-    const blend = btn("", "blend-open", () => openCraftDialog(k, best));
+    const blend = btn("", "blend-open", () => openCraftDialog(k, best), best <= 0);
     blend.setAttribute("aria-label", "Blend " + it.name);
     blend.title = "Blend " + it.name;
     const blendIconUrl = iconUrl("blender_2d");
@@ -614,10 +1007,24 @@ function makeNode(k, P) {
     }
     own$.append(blend);
   }
+  const purchase = D.purchases?.[k];
+  if (purchase) {
+    const buy = btn("", "buy-item",
+      () => openPurchaseDialog(k));
+    buy.append(uiIcon("buy"));
+    buy.setAttribute("aria-label", "Buy " + D.items[k].name);
+    buy.title = "Buy " + D.items[k].name;
+    own$.append(buy);
+  }
   n.append(own$);
+  if (purchase) {
+    n.append(h("div", "purchase-hint", fmt(purchase.itemAmount) + " " + countedItemName(k, purchase.itemAmount)
+      + " for " + fmt(purchase.currencyAmount) + " " + countedItemName(purchase.currency, purchase.currencyAmount)
+      + " · " + purchase.shop));
+  }
 
   n.append(h("div", "need " + (need === 0 ? "ok" : "todo"),
-    need === 0 ? "✓ Covered" : (recipe ? "Craft " : "Gather ") + fmt(need) + " more"));
+    need === 0 ? "✓ Covered" : (recipe && !hiddenCraftItems.has(k) ? "Craft " : "Gather ") + fmt(need) + " more"));
   n.append(h("div", "tiny", "of " + fmt(GROSS[k]) + " needed in total"));
   const bar = h("div", "bar"), fill = h("i"); fill.style.width = pct + "%"; bar.append(fill); n.append(bar);
 
@@ -625,46 +1032,40 @@ function makeNode(k, P) {
 }
 
 function goalPct(g) {
-  return goalProgress(D, inv, g, GOAL_GROSS[g]);
+  return purchasedGoals.has(g) ? 0 : goalProgress(D, inv, g, GOAL_GROSS[g], { gatherOnly: hiddenCraftItems });
 }
 
 function makeGoal(g) {
   const v = D.goals[g], pct = goalPct(g), craftingMinutes = totalCraftingMinutes(plan(inv, [g]));
   const n = h("div", "node canister"); n.id = "n-goal-" + g;
   const hd = h("div", "nh"); hd.append(ico(v.icon, g), h("span", "", v.name)); n.append(hd);
-  const info = btn("?", "goal-info", () => {});
-  info.setAttribute("aria-label", "Show " + v.name + " item requirements");
-  info.setAttribute("aria-expanded", "false");
-  const tip = h("div", "goal-tooltip"); tip.id = "goal-tip-" + g; tip.setAttribute("popover", "auto");
-  tip.setAttribute("role", "tooltip"); tip.append(h("strong", "goal-tooltip-title", v.name + " requirements"));
-  const costs = h("div", "goal-cost-list");
-  for (const [k, q] of Object.entries(v.cost)) {
-    const row = h("div", "goal-cost");
-    row.append(ico(D.items[k].icon, k), h("span", "", D.items[k].name), h("b", "goal-cost-count", fmt(inv[k] || 0) + " / " + fmt(q)));
-    costs.append(row);
-  }
-  tip.append(costs); info.setAttribute("aria-describedby", tip.id);
-  info.onclick = () => {
-    if (tip.matches(":popover-open")) { tip.hidePopover(); return; }
-    positionTooltip(info, tip);
-  };
-  tip.addEventListener("toggle", () => info.setAttribute("aria-expanded", String(tip.matches(":popover-open"))));
-  n.append(info, tip);
+  const info = btn("?", "goal-info", () => openItemGuide(g, true));
+  info.setAttribute("aria-label", "More about " + v.name);
+  info.setAttribute("aria-haspopup", "dialog");
+  info.setAttribute("aria-controls", "item-guide-dialog");
+  n.append(info);
   n.append(h("div", "pct", pct.toFixed(1) + "%"));
   n.append(h("div", "tiny", "Progress if this were your only goal"));
   if (craftingMinutes > 0) n.append(h("div", "goal-crafting-time", "Blender time: " + formatCraftingTime(craftingMinutes)));
   const bar = h("div", "bar"), fill = h("i"); fill.style.width = pct + "%"; bar.append(fill); n.append(bar);
+  if (consumeGoalMaterials(D, inv, g, { gatherOnly: hiddenCraftItems })) {
+    const purchase = btn("Purchase", "goal-purchase", () => send({ item: g, action: "purchaseGoal" }));
+    purchase.setAttribute("aria-label", "Purchase " + v.name + " using the required ingredients");
+    n.append(purchase);
+  }
   return n;
 }
 
 // Column per depth: gather first, shop (goals) last, raw items sit just before their first consumer.
 function layout() {
-  const vis = Object.keys(GROSS).filter((k) => GROSS[k] > 0), crafted = vis.filter((k) => D.recipes[k]), lc = {};
-  const L = (k) => lc[k] ?? (lc[k] = 1 + Math.max(0, ...Object.keys(D.recipes[k]).filter((i) => D.recipes[i] && GROSS[i] > 0).map(L)));
+  const vis = Object.keys(GROSS).filter((k) => GROSS[k] > 0);
+  const crafted = vis.filter((k) => D.recipes[k] && !hiddenCraftItems.has(k)), lc = {};
+  const L = (k) => lc[k] ?? (lc[k] = 1 + Math.max(0, ...Object.keys(D.recipes[k])
+    .filter((i) => D.recipes[i] && !hiddenCraftItems.has(i) && GROSS[i] > 0).map(L)));
   crafted.forEach(L);
   const goalL = Math.max(0, ...crafted.map(L)) + 1, lvl = {};
   crafted.forEach((k) => (lvl[k] = lc[k]));
-  for (const k of vis.filter((x) => !D.recipes[x])) {
+  for (const k of vis.filter((x) => !D.recipes[x] || hiddenCraftItems.has(x))) {
     let m = sel.some((g) => D.goals[g].cost[k]) ? goalL : 99;
     for (const c of crafted) if (D.recipes[c][k]) m = Math.min(m, lc[c]);
     lvl[k] = m - 1;
@@ -704,6 +1105,7 @@ function drawEdges() {
   const graphRect = graph.getBoundingClientRect();
   const edges = [];
   for (const [key, recipe] of Object.entries(D.recipes)) {
+    if (hiddenCraftItems.has(key)) continue;
     for (const [ingredient, quantity] of Object.entries(recipe)) {
       edges.push({ from: ingredient, to: key, quantity });
     }
@@ -821,7 +1223,9 @@ function requiredNodeKeys(key) {
   const addItem = (item) => {
     if (required.has(item)) return;
     required.add(item);
-    for (const ingredient of Object.keys(D.recipes[item] || {})) addItem(ingredient);
+    if (!hiddenCraftItems.has(item)) {
+      for (const ingredient of Object.keys(D.recipes[item] || {})) addItem(ingredient);
+    }
   };
   if (key.startsWith("goal-")) {
     required.add(key);
@@ -933,11 +1337,15 @@ function buildChips() {
       selectAll.onchange = () => {
         const allSelected = goals.every(([goal]) => sel.includes(goal));
         const categoryGoals = new Set(goals.map(([goal]) => goal));
-        sel = allSelected
-          ? sel.filter((goal) => !categoryGoals.has(goal))
-          : [...new Set([...sel, ...categoryGoals])];
+        if (allSelected) {
+          sel = sel.filter((goal) => !categoryGoals.has(goal));
+        } else {
+          sel = [...new Set([...sel, ...categoryGoals])];
+          for (const goal of categoryGoals) purchasedGoals.delete(goal);
+        }
         if (storageConsent && storageToggle.checked) {
           storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
+          storageSet(STORAGE_KEYS.purchasedGoals, JSON.stringify([...purchasedGoals]));
         }
         refreshGross(); buildChips(); render(true);
       };
@@ -956,8 +1364,10 @@ function buildChips() {
       b.append(ico(v.icon, g), h("span", "", v.name), gp);
       b.onclick = () => {
         sel = on ? sel.filter((x) => x !== g) : [...sel, g];
+        if (!on) purchasedGoals.delete(g);
         if (storageConsent && storageToggle.checked) {
           storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
+          storageSet(STORAGE_KEYS.purchasedGoals, JSON.stringify([...purchasedGoals]));
         }
         refreshGross(); buildChips(); render(true);
       };
@@ -979,9 +1389,13 @@ function render(autoFit = false) {
   const P = plan(inv), g = $("graph"), { lvl, goalL } = layout(), N = goalL + 1;
   if (selectedFocusPath.length) {
     const root = selectedFocusPath[0];
-    if (root.startsWith("goal-") ? !sel.includes(root.slice(5)) : !(GROSS[root] > 0)) selectedFocusPath = [];
+    if (root.startsWith("goal-")
+      ? !sel.includes(root.slice(5))
+      : !(GROSS[root] > 0)) selectedFocusPath = [];
     for (let index = 1; index < selectedFocusPath.length; index++) {
-      if (!requiredNodeKeys(selectedFocusPath[index - 1]).has(selectedFocusPath[index])) {
+      const item = selectedFocusPath[index];
+      if (!requiredNodeKeys(selectedFocusPath[index - 1]).has(item)
+        || (!item.startsWith("goal-") && !(GROSS[item] > 0))) {
         selectedFocusPath = selectedFocusPath.slice(0, index);
         break;
       }
@@ -993,11 +1407,13 @@ function render(autoFit = false) {
   const totalCraftTime = $("craft-time-total");
   totalCraftTime.hidden = totalMinutes === 0;
   totalCraftTime.textContent = "Blender time: " + formatCraftingTime(totalMinutes);
+  if (document.activeElement !== ticketBalance) ticketBalance.value = num(inv.tickets || 0);
   const restoreSavedView = !autoFit && restoreGraphViewOnRender && savedGraphView;
   g.replaceChildren();
   const columns = [];
   for (let c = 0; c < N; c++) {
-    const keys = Object.keys(D.items).filter((k) => GROSS[k] > 0 && lvl[k] === c && (!required || required.has(k)));
+    const keys = Object.keys(D.items).filter((k) =>
+      GROSS[k] > 0 && lvl[k] === c && (!required || required.has(k)));
     const col = h("div", "col");
     const appendSection = (label, nodes) => {
       if (!nodes.length) return;
@@ -1005,8 +1421,8 @@ function render(autoFit = false) {
       section.append(h("div", "colh", label), ...nodes);
       col.append(section);
     };
-    appendSection("Gather", keys.filter((k) => !D.recipes[k]).map((k) => makeNode(k, P)));
-    appendSection("Blender", keys.filter((k) => D.recipes[k]).map((k) => makeNode(k, P)));
+    appendSection("Gather", keys.filter((k) => !D.recipes[k] || hiddenCraftItems.has(k)).map((k) => makeNode(k, P)));
+    appendSection("Blender", keys.filter((k) => D.recipes[k] && !hiddenCraftItems.has(k)).map((k) => makeNode(k, P)));
     if (c === goalL) appendSection("Buy in the shop", sel.filter((x) => !required || required.has("goal-" + x)).map((x) => makeGoal(x)));
     if (col.childElementCount) columns.push(col);
   }
@@ -1017,6 +1433,12 @@ function render(autoFit = false) {
   g.style.width = graphWidth + "px";
   g.style.minWidth = graphWidth + "px";
   g.append(...columns);
+  if (!sel.length) {
+    const empty = h("section", "empty-plan");
+    empty.append(h("h2", "", "Choose an item to start your plan"),
+      h("p", "", "Select one or more goals from the sidebar. Their required materials and crafting steps will appear here."));
+    g.append(empty);
+  }
   g.querySelectorAll(".node").forEach((n) => {
     const key = n.id.slice(2);
     n.tabIndex = 0;
@@ -1062,7 +1484,7 @@ function render(autoFit = false) {
 
   const gather = $("gather"), todo = $("todo");
   gather.replaceChildren(); todo.replaceChildren();
-  RAWKEYS.filter((k) => GROSS[k] > 0).map((k) => [k, remaining(P, k)]).sort((a, b) => b[1] / GROSS[b[0]] - a[1] / GROSS[a[0]]).forEach(([k, r]) =>
+  gatherKeys().filter((k) => GROSS[k] > 0).map((k) => [k, remaining(P, k)]).sort((a, b) => b[1] / GROSS[b[0]] - a[1] / GROSS[a[0]]).forEach(([k, r]) =>
     gather.append(listRow(k,
       r === 0 ? "✓ done" : fmt(r) + " left of " + fmt(GROSS[k]), pctOf(P, k), r === 0)));
   [...D.order].reverse().filter((k) => GROSS[k] > 0).forEach((k) =>
@@ -1113,7 +1535,8 @@ function buildRequirementsText() {
   };
   const ownedItems = Object.keys(D.items).filter((k) => inv[k] > 0);
   const P = plan(inv);
-  const gatherItems = RAWKEYS
+  const rawItems = gatherKeys();
+  const gatherItems = rawItems
     .filter((k) => GROSS[k] > 0 && remaining(P, k) > 0)
     .sort((a, b) => remaining(P, b) / GROSS[b] - remaining(P, a) / GROSS[a]);
   const craftItems = [...D.order].reverse().filter((k) => GROSS[k] > 0 && P.craft[k] > 0);
@@ -1128,7 +1551,7 @@ function buildRequirementsText() {
   ];
   for (const g of sel) {
     const goalPlan = plan({}, [g]);
-    const goalRaw = RAWKEYS.filter((k) => goalPlan.demand[k] > 0);
+    const goalRaw = rawItems.filter((k) => goalPlan.demand[k] > 0);
     const goalCraft = [...D.order].reverse().filter((k) => goalPlan.craft[k] > 0);
     lines.push("", D.goals[g].name + ":");
     lines.push("  Gather:");
@@ -1166,6 +1589,139 @@ $("requirements-download").onclick = () => {
   status("Inventory and requirements downloaded.", "ok");
 };
 $("requirements-close").onclick = () => requirementsDialog.close();
+const TUTORIAL_KEY = "beePrintTutorialComplete";
+const tutorialLayer = $("tutorial-layer"), tutorialCard = tutorialLayer.querySelector(".tutorial-card");
+const tutorialSteps = [
+  { selector: "#goal-btn-gummyballer", title: "Choose your goals", copy: "Pick the items you want to make or buy. Select more than one to combine their material requirements." },
+  { selector: "#n-gumdrops", title: "Read a plan card", copy: "Cards show what you own, what you still need, and your progress. Select a card to focus on its ingredients." },
+  { selector: ".graph-ticket-balance", title: "Track your tickets", copy: "Change your ticket amount here. BeePrint uses this balance when checking shop purchases." },
+  { selector: "#n-swirled_waxes .recipe-plan-toggle", title: "Hide ingredients when needed", copy: "The eye button switches an item to gather-or-buy-only, so its recipe ingredients no longer expand into your plan." },
+  { selector: "#n-gumdrops .buy-item", title: "Open the shop", copy: "Use the cart button to choose a number of bundles, review the total cost, and confirm a purchase." },
+  { selector: ".lists .panel:first-child h2", title: "Track your progress", copy: "These lists summarize what remains to gather and craft across your selected goals." },
+  { selector: "#export-requirements", title: "Take your plan with you", copy: "Export a readable inventory and requirements list whenever you need it. You can skip or finish the tour at any time." },
+];
+let tutorialStarted = false, tutorialIndex = 0, tutorialTarget = null, tutorialOriginalGoals = [];
+function hasCompletedTutorial() {
+  if (storageConsent && storageGet(TUTORIAL_KEY) === "yes") return true;
+  try { return sessionStorage.getItem(TUTORIAL_KEY) === "yes"; } catch { return false; }
+}
+function rememberTutorialCompletion() {
+  if (storageConsent && storageToggle.checked && storageSet(TUTORIAL_KEY, "yes")) return;
+  try { sessionStorage.setItem(TUTORIAL_KEY, "yes"); } catch {}
+}
+function positionTutorial() {
+  if (!tutorialTarget || tutorialLayer.hidden) return;
+  const rect = tutorialTarget.getBoundingClientRect();
+  const panelRect = tutorialCard.getBoundingClientRect();
+  tutorialLayer.style.setProperty("--spot-x", rect.left + rect.width / 2 + "px");
+  tutorialLayer.style.setProperty("--spot-y", rect.top + rect.height / 2 + "px");
+  tutorialLayer.style.setProperty("--spot-width", Math.max(26, rect.width / 2 + 12) + "px");
+  tutorialLayer.style.setProperty("--spot-height", Math.max(22, rect.height / 2 + 12) + "px");
+  const gap = 14, margin = 16, centerX = rect.left + rect.width / 2, centerY = rect.top + rect.height / 2;
+  const candidates = [
+    { left: centerX - panelRect.width / 2, top: rect.bottom + gap },
+    { left: centerX - panelRect.width / 2, top: rect.top - panelRect.height - gap },
+    { left: rect.right + gap, top: centerY - panelRect.height / 2 },
+    { left: rect.left - panelRect.width - gap, top: centerY - panelRect.height / 2 },
+  ];
+  const fits = candidates.find(({ left, top }) => left >= margin && top >= margin
+    && left + panelRect.width <= innerWidth - margin && top + panelRect.height <= innerHeight - margin
+    && (left + panelRect.width <= rect.left || left >= rect.right
+      || top + panelRect.height <= rect.top || top >= rect.bottom));
+  const placement = fits || {
+    left: Math.max(margin, Math.min(innerWidth - panelRect.width - margin, centerX - panelRect.width / 2)),
+    top: Math.max(margin, Math.min(innerHeight - panelRect.height - margin, rect.top - panelRect.height - gap)),
+  };
+  tutorialCard.style.left = placement.left + "px";
+  tutorialCard.style.top = placement.top + "px";
+}
+function showTutorialStep() {
+  if (tutorialTarget) tutorialTarget.classList.remove("tutorial-target");
+  const stepInfo = tutorialSteps[tutorialIndex];
+  const target = document.querySelector(stepInfo.selector);
+  if (!target) {
+    status("The tutorial could not find a page item. You can continue using BeePrint normally.", "error");
+    finishTutorial();
+    return;
+  }
+  tutorialTarget = target;
+  tutorialTarget.classList.add("tutorial-target");
+  $("tutorial-title").textContent = stepInfo.title;
+  $("tutorial-copy").textContent = stepInfo.copy;
+  $("tutorial-step-count").textContent = "Step " + (tutorialIndex + 1) + " of " + tutorialSteps.length;
+  $("tutorial-back").disabled = tutorialIndex === 0;
+  $("tutorial-next").textContent = tutorialIndex === tutorialSteps.length - 1 ? "Finish" : "Next";
+  tutorialTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+  requestAnimationFrame(positionTutorial);
+  setTimeout(positionTutorial, 160);
+}
+function startTutorial() {
+  if (tutorialStarted || hasCompletedTutorial() || storageDialog.open) return;
+  tutorialStarted = true;
+  tutorialOriginalGoals = [...sel];
+  sel = [...new Set([...sel, "gummyballer", "heat_treated_planter", "cobalt_guard"])];
+  refreshGross();
+  buildChips();
+  render(true);
+  app.inert = true;
+  tutorialLayer.hidden = false;
+  tutorialIndex = 0;
+  showTutorialStep();
+  $("tutorial-next").focus();
+}
+function finishTutorial() {
+  if (!tutorialStarted) return;
+  tutorialStarted = false;
+  if (tutorialTarget) tutorialTarget.classList.remove("tutorial-target");
+  tutorialTarget = null;
+  tutorialLayer.hidden = true;
+  app.inert = false;
+  sel = tutorialOriginalGoals;
+  if (storageConsent && storageToggle.checked) storageSet(STORAGE_KEYS.goals, JSON.stringify(sel));
+  refreshGross();
+  buildChips();
+  render(true);
+  rememberTutorialCompletion();
+}
+$("tutorial-skip").onclick = finishTutorial;
+$("tutorial-back").onclick = () => {
+  if (tutorialIndex > 0) {
+    tutorialIndex--;
+    showTutorialStep();
+    $("tutorial-next").focus();
+  }
+};
+$("tutorial-next").onclick = () => {
+  if (tutorialIndex === tutorialSteps.length - 1) {
+    finishTutorial();
+    return;
+  }
+  tutorialIndex++;
+  showTutorialStep();
+  $("tutorial-next").focus();
+};
+tutorialCard.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    finishTutorial();
+  } else if (event.key === "Tab") {
+    const buttons = [...tutorialCard.querySelectorAll("button:not(:disabled)")];
+    const first = buttons[0], last = buttons[buttons.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+});
+window.addEventListener("resize", positionTutorial);
+if (storageDialog.open) {
+  storageDialog.addEventListener("close", () => setTimeout(startTutorial, 0), { once: true });
+} else {
+  setTimeout(startTutorial, 0);
+}
 const importFile = $("import-file");
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 $("import-json").onclick = () => importFile.click();

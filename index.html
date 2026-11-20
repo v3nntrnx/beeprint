@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; frame-src https://docs.google.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Plan Bee Swarm Simulator crafting goals, track your inventory, and see the raw materials and Blender time you still need.">
 <meta name="theme-color" content="#7bc5d5">
@@ -30,6 +30,10 @@
     <svg class="drip" viewBox="0 0 310 40" preserveAspectRatio="none" aria-hidden="true"><path fill="#ffbf1f" d="M0 0H310V12C288 12 290 36 279 36S270 12 246 12C224 12 226 28 217 28S208 12 178 12C156 12 158 40 147 40S138 12 110 12C88 12 90 26 81 26S72 12 50 12C30 12 32 34 21 34S12 12 0 12Z"/></svg>
     <div class="in">
       <h2>What are you building?</h2>
+      <button class="ghost progression-guide-button" id="progression-guide-open" type="button" aria-label="Open BSS Progression Guide" title="BSS Progression Guide" aria-haspopup="dialog" aria-controls="progression-guide-dialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 6.5c-2.5-2-5.5-2-8-1v13c2.5-1 5.5-1 8 1m0-13c2.5-2 5.5-2 8-1v13c-2.5-1-5.5-1-8 1m0-13v13"/></svg>
+        <span class="progression-guide-label">BSS Progression Guide</span>
+      </button>
       <div class="goals" id="goals"></div>
       <button class="ghost" id="reset" type="button">Reset all counts</button>
       <div class="data-actions"><button class="ghost" id="export-json" type="button">Export JSON</button><button class="ghost" id="import-json" type="button">Import JSON</button></div>
@@ -52,6 +56,15 @@
             <span class="graph-zoom-value" id="zoom-value">100%</span>
             <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
           </div>
+          <label class="ticket-balance graph-ticket-balance" for="ticket-balance" title="Tickets owned">
+            <span class="ticket-balance-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M4 5.5h16A1.5 1.5 0 0 1 21.5 7v3.1a2.1 2.1 0 0 0 0 4.2v3.2A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-3.2a2.1 2.1 0 0 0 0-4.2V7A1.5 1.5 0 0 1 4 5.5Z" fill="#ffd34a" stroke="#795126" stroke-width="1.5"/>
+                <path d="M15.5 6v2m0 1.5v2m0 1.5v2m0 1.5v2M7 10h5m-5 3.5h5" fill="none" stroke="#795126" stroke-linecap="round" stroke-width="1.5"/>
+              </svg>
+            </span>
+            <input id="ticket-balance" inputmode="decimal" aria-label="Tickets owned" value="0">
+          </label>
         </div>
         <div class="graph-legend" role="note" aria-label="Graph legend">
           <span class="legend-entry"><b class="legend-count">123</b> Owned</span>
@@ -77,18 +90,81 @@
     </div>
   </main>
 </div>
+<dialog class="craft-dialog progression-guide-dialog" id="progression-guide-dialog" aria-labelledby="progression-guide-title">
+  <div class="item-guide-dialog-head">
+    <h2 id="progression-guide-title">BSS Progression Guide</h2>
+    <button class="item-guide-close" id="progression-guide-close" type="button" aria-label="Close progression guide">×</button>
+  </div>
+  <div class="progression-guide-frame-wrap">
+    <iframe id="progression-guide-frame" data-src="https://docs.google.com/presentation/d/1MWdLJZRCGkvxAmNRYXtjG7RRiWpNAkpWt-qjDkUmOOk/embed" title="BSS Progression Guide" referrerpolicy="no-referrer" allowfullscreen></iframe>
+  </div>
+  <div class="craft-dialog-actions progression-guide-actions">
+    <a class="item-guide-link" href="https://docs.google.com/presentation/d/1MWdLJZRCGkvxAmNRYXtjG7RRiWpNAkpWt-qjDkUmOOk/" target="_blank" rel="noopener noreferrer">Open presentation in new tab</a>
+    <button class="ghost" id="progression-guide-close-footer" type="button">Close</button>
+  </div>
+</dialog>
 <dialog class="craft-dialog" id="craft-dialog" aria-labelledby="craft-dialog-title">
   <div class="craft-dialog-head"><img src="assets/img/icons/blender_2d.webp" alt="" width="32" height="32"><span class="ic craft-item-icon" id="craft-item-icon" aria-hidden="true"></span><h2 id="craft-dialog-title">Blend <span id="craft-dialog-item"></span></h2></div>
   <label for="craft-amount">Amount to blend</label>
   <div class="craft-amount-row"><input id="craft-amount" inputmode="decimal" value="1"><button id="craft-add" type="button" aria-label="Increase blend amount">+</button><button id="craft-sub" type="button" aria-label="Decrease blend amount">−</button><button id="craft-max" type="button">Max</button></div>
   <div class="tiny craft-limit" id="craft-limit"></div>
-  <div class="craft-dialog-actions"><button class="ghost" id="craft-cancel" type="button">Cancel</button><button class="craft" id="craft-confirm" type="button">Blended</button></div>
+  <div class="craft-dialog-actions"><button class="ghost" id="craft-cancel" type="button">Cancel</button><div class="craft-confirm-group"><button class="craft" id="craft-confirm" type="button">Blend</button><div class="tiny craft-time-estimate" id="craft-time-estimate" hidden></div></div></div>
+</dialog>
+<dialog class="craft-dialog purchase-dialog" id="purchase-dialog" aria-labelledby="purchase-dialog-title">
+  <div class="craft-dialog-head"><span class="purchase-dialog-icon" aria-hidden="true">🛒</span><h2 id="purchase-dialog-title">Buy <span id="purchase-dialog-item"></span></h2></div>
+  <div class="tiny purchase-shop" id="purchase-shop"></div>
+  <label id="purchase-quantity-label" for="purchase-quantity">Shop bundles</label>
+  <div class="purchase-quantity-row"><button id="purchase-sub" type="button" aria-label="Decrease bundles">−</button><input id="purchase-quantity" inputmode="numeric" value="1"><button id="purchase-add" type="button" aria-label="Increase bundles">+</button></div>
+  <div class="purchase-rate" id="purchase-rate"></div>
+  <div class="purchase-summary" id="purchase-summary" aria-live="polite"></div>
+  <section class="purchase-honey-option" id="purchase-honey-option" aria-labelledby="purchase-honey-title" hidden>
+    <h3 id="purchase-honey-title">Payment method</h3>
+    <label class="purchase-payment-choice" for="purchase-payment-tickets">
+      <input id="purchase-payment-tickets" name="purchase-payment" type="radio" value="tickets" checked>
+      <span>Tickets — 6 per Royal Jelly</span>
+    </label>
+    <label class="purchase-payment-choice" for="purchase-payment-honey">
+      <input id="purchase-payment-honey" name="purchase-payment" type="radio" value="honey">
+      <span>Honey — up to 1,000,000 per Royal Jelly</span>
+    </label>
+    <p class="purchase-honey-warning" id="purchase-honey-warning" role="note" hidden></p>
+  </section>
+  <div class="craft-dialog-actions"><button class="ghost" id="purchase-cancel" type="button">Cancel</button><button class="craft" id="purchase-confirm" type="button">Buy</button></div>
+</dialog>
+<dialog class="craft-dialog item-guide-dialog" id="item-guide-dialog" aria-labelledby="item-guide-title">
+  <div class="item-guide-dialog-head">
+    <h2 id="item-guide-title"></h2>
+    <button class="item-guide-close" id="item-guide-close" type="button" aria-label="Close item guide">×</button>
+  </div>
+  <div class="item-guide-details" id="item-guide-details"></div>
+  <section class="item-guide-ways" aria-labelledby="item-guide-ways-title">
+    <h3 id="item-guide-ways-title">Ways to obtain</h3>
+    <ul id="item-guide-ways"></ul>
+  </section>
+  <p class="tiny item-guide-source-note">This summary is based on the Bee Swarm Simulator Wiki; check the Wiki for additional details and updates.</p>
+  <div class="craft-dialog-actions item-guide-actions">
+    <a class="item-guide-link" id="item-guide-wiki" target="_blank" rel="noopener noreferrer">Open Wiki guide</a>
+    <button class="ghost" id="item-guide-close-footer" type="button">Close</button>
+  </div>
 </dialog>
 <dialog class="craft-dialog storage-consent" id="storage-consent-dialog" aria-labelledby="storage-consent-title">
   <h2 id="storage-consent-title">Save your progress?</h2>
   <p>May BeePrint save your inventory and selected goals in browser storage on this device? Your choice will be remembered. If you choose not to, your progress lasts only until you close this page. You can change this choice in Storage settings.</p>
   <div class="craft-dialog-actions"><button class="ghost" id="storage-decline" type="button">No thanks</button><button class="craft" id="storage-allow" type="button">Save in browser storage</button></div>
 </dialog>
+<div class="tutorial-layer" id="tutorial-layer" hidden>
+  <div class="tutorial-shade" id="tutorial-shade"></div>
+  <section class="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-copy">
+    <div class="tutorial-step-count" id="tutorial-step-count"></div>
+    <h2 id="tutorial-title">Welcome to BeePrint</h2>
+    <p id="tutorial-copy"></p>
+    <div class="tutorial-actions">
+      <button class="ghost tutorial-skip" id="tutorial-skip" type="button">Skip tutorial</button>
+      <button class="ghost tutorial-back" id="tutorial-back" type="button">Back</button>
+      <button class="craft tutorial-next" id="tutorial-next" type="button">Next</button>
+    </div>
+  </section>
+</div>
 <dialog class="craft-dialog credits-dialog" id="credits-dialog" aria-labelledby="credits-title">
   <h2 id="credits-title">Author &amp; Credits</h2>
   <p class="credits-author">Created by <a href="https://github.com/v3nntrnx" target="_blank" rel="noopener noreferrer">v3nntrnx</a> on GitHub.</p>
@@ -96,7 +172,8 @@
   <h3>Credits</h3>
   <ul class="credits-list">
     <li><a href="https://bee-swarm-simulator.fandom.com/wiki/User_blog:Larceushunter/BSS_wiki_Background_contest_submission?file=Light_Mode_BSS_background_entry_.jpg" target="_blank" rel="noopener noreferrer">Background image</a> by Larceushunter, from a Bee Swarm Simulator Wiki background contest submission.</li>
-    <li><a href="https://bee-swarm-simulator.fandom.com/wiki" target="_blank" rel="noopener noreferrer">Bee Swarm Simulator Wiki</a> for shop data and item icon references, including the <a href="https://bee-swarm-simulator.fandom.com/wiki/Shops" target="_blank" rel="noopener noreferrer">Shops</a> pages (Mountain Top Shop, Red and Blue HQs, Petal Shop, Dapper Bear's Shop, and others).</li>
+    <li><a href="https://bee-swarm-simulator.fandom.com/wiki" target="_blank" rel="noopener noreferrer">Bee Swarm Simulator Wiki</a> for crafting recipes, shop data, item-acquisition guides, and icon references, including the <a href="https://bee-swarm-simulator.fandom.com/wiki/Shops" target="_blank" rel="noopener noreferrer">Shops</a> pages and <a href="https://bee-swarm-simulator.fandom.com/wiki/Royal_Jelly_Shop" target="_blank" rel="noopener noreferrer">Royal Jelly Shop</a> prices.</li>
+    <li>Ticket purchase rates are from the Wiki pages for the <a href="https://bee-swarm-simulator.fandom.com/wiki/Gumdrop_Shop" target="_blank" rel="noopener noreferrer">Gumdrop Shop</a>, <a href="https://bee-swarm-simulator.fandom.com/wiki/Stinger_Shop" target="_blank" rel="noopener noreferrer">Stinger Shop</a>, <a href="https://bee-swarm-simulator.fandom.com/wiki/Royal_Jelly_Dispenser" target="_blank" rel="noopener noreferrer">Royal Jelly Dispenser</a>, and <a href="https://bee-swarm-simulator.fandom.com/wiki/Ticket_Tent" target="_blank" rel="noopener noreferrer">Ticket Tent</a>.</li>
     <li><a href="https://bee-swarm-simulator.fandom.com/wiki/Blender" target="_blank" rel="noopener noreferrer">Blender crafting time</a>: five minutes per item; crafting time counts down while in-game.</li>
     <li><a href="https://beeswarm-calculator.netlify.app/" target="_blank" rel="noopener noreferrer">Bee Swarm Calculator</a> for ideas and inspiration.</li>
     <li>Bee Swarm Simulator and its original game assets are by Onett.</li>

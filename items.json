@@ -34,6 +34,7 @@
     "turpentines": { "name": "Turpentine", "icon": "🫗" },
     "treats": { "name": "Treats", "icon": "🍪" },
     "gold_eggs": { "name": "Gold Eggs", "icon": "🥚" },
+    "diamond_eggs": { "name": "Diamond Eggs", "icon": "🥚" },
     "invigorating_vials": { "name": "Invigorating Vials", "icon": "🧪" },
     "comforting_vials": { "name": "Comforting Vials", "icon": "💧" },
     "swirled_waxes": { "name": "Swirled Waxes", "icon": "🌀" },
@@ -51,7 +52,8 @@
     "riley_quests": { "name": "Gifted Riley Bee Quests", "icon": "📜" },
     "bucko_quests": { "name": "Gifted Bucko Bee Quests", "icon": "📜" },
     "gold_cog_amulets": { "name": "Gold Cog Amulets", "icon": "🟡" },
-    "diamond_cog_amulets": { "name": "Diamond Cog Amulets", "icon": "💎" }
+    "diamond_cog_amulets": { "name": "Diamond Cog Amulets", "icon": "💎" },
+    "tickets": { "name": "Tickets", "icon": "🎟️" }
   },
   "goals": {
     "canister": { "name": "Coconut Canister", "icon": "🥥" },
@@ -160,5 +162,11 @@
     "digital_bee": "Robo Bear's Shop",
     "diamond_mask": "Diamond Mask Shop",
     "demon_mask": "Demon Mask Shop"
+  },
+  "purchases": {
+    "gumdrops": { "currency": "tickets", "currencyAmount": 1, "itemAmount": 3, "shop": "Gumdrop Shop" },
+    "stingers": { "currency": "tickets", "currencyAmount": 10, "itemAmount": 1, "shop": "Stinger Shop" },
+    "royal_jellies": { "currency": "tickets", "currencyAmount": 6, "itemAmount": 1, "shop": "Royal Jelly Dispenser" },
+    "diamond_eggs": { "currency": "tickets", "currencyAmount": 400, "itemAmount": 1, "shop": "Ticket Tent" }
   }
 }
