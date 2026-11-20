@@ -142,6 +142,20 @@ function setMobileView(view, scrollToTabs = true) {
 }
 mobileGoalsTab.addEventListener("click", () => setMobileView("goals"));
 mobilePlanTab.addEventListener("click", () => setMobileView("plan"));
+const graphToolbar = $("graph-toolbar"), graphOverlay = $("graph-overlay");
+const mobileGraphControls = $("mobile-graph-controls");
+const graphControlsBreakpoint = matchMedia("(max-width: 900px)");
+function placeGraphControls(onMobile = graphControlsBreakpoint.matches) {
+  if (onMobile) {
+    mobileGraphControls.append(graphToolbar);
+    mobileGraphControls.hidden = false;
+  } else {
+    mobileGraphControls.hidden = true;
+    graphOverlay.prepend(graphToolbar);
+  }
+}
+placeGraphControls();
+graphControlsBreakpoint.addEventListener("change", (event) => placeGraphControls(event.matches));
 const SIDEBAR_MIN_WIDTH = 72, SIDEBAR_COMPACT_THRESHOLD = 132, SIDEBAR_MAX_WIDTH = 440;
 function setSidebarWidth(value, persist = false) {
   const width = Number(value);
@@ -237,18 +251,21 @@ function setGraphZoom(value) {
   scheduleDrawEdges();
   scheduleGraphViewSave();
 }
-function zoomGraphBy(amount, clientX, clientY) {
+function zoomGraphTo(value, clientX, clientY, anchorX, anchorY) {
   const bounds = graphScroller.getBoundingClientRect();
   const localX = (clientX ?? bounds.left + bounds.width / 2) - bounds.left - graphScroller.clientLeft;
   const localY = (clientY ?? bounds.top + bounds.height / 2) - bounds.top - graphScroller.clientTop;
   const oldZoom = graphZoom;
-  const nextZoom = Math.min(1.5, Math.max(0.25, Math.round((oldZoom + amount) * 100) / 100));
+  const nextZoom = Math.min(1.5, Math.max(0.25, Math.round(value * 100) / 100));
   if (nextZoom === oldZoom) return;
-  const anchorX = (graphScroller.scrollLeft + localX - GRAPH_PAN_MARGIN) / oldZoom;
-  const anchorY = (graphScroller.scrollTop + localY - GRAPH_PAN_MARGIN) / oldZoom;
+  const contentX = anchorX ?? (graphScroller.scrollLeft + localX - GRAPH_PAN_MARGIN) / oldZoom;
+  const contentY = anchorY ?? (graphScroller.scrollTop + localY - GRAPH_PAN_MARGIN) / oldZoom;
   setGraphZoom(nextZoom);
-  graphScroller.scrollLeft = anchorX * nextZoom + GRAPH_PAN_MARGIN - localX;
-  graphScroller.scrollTop = anchorY * nextZoom + GRAPH_PAN_MARGIN - localY;
+  graphScroller.scrollLeft = contentX * nextZoom + GRAPH_PAN_MARGIN - localX;
+  graphScroller.scrollTop = contentY * nextZoom + GRAPH_PAN_MARGIN - localY;
+}
+function zoomGraphBy(amount, clientX, clientY) {
+  zoomGraphTo(graphZoom + amount, clientX, clientY);
 }
 $("zoom-in").addEventListener("click", () => setGraphZoom(graphZoom + 0.1));
 $("zoom-out").addEventListener("click", () => setGraphZoom(graphZoom - 0.1));
@@ -285,6 +302,97 @@ graphScroller.addEventListener("pointerdown", (event) => {
   panScrollLeft = graphScroller.scrollLeft; panScrollTop = graphScroller.scrollTop;
   panMoved = false;
 });
+let touchPan = null, touchPinch = null;
+graphScroller.addEventListener("touchstart", (event) => {
+  if (event.touches.length === 1) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("button, input, textarea, select, a, [popover]")) return;
+    const touch = event.touches[0];
+    touchPan = {
+      identifier: touch.identifier,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      scrollLeft: graphScroller.scrollLeft,
+      scrollTop: graphScroller.scrollTop,
+      moved: false,
+    };
+    touchPinch = null;
+    return;
+  }
+  if (event.touches.length < 2) return;
+  const first = event.touches[0], second = event.touches[1];
+  const midpointX = (first.clientX + second.clientX) / 2;
+  const midpointY = (first.clientY + second.clientY) / 2;
+  const bounds = graphScroller.getBoundingClientRect();
+  const localX = midpointX - bounds.left - graphScroller.clientLeft;
+  const localY = midpointY - bounds.top - graphScroller.clientTop;
+  touchPinch = {
+    startDistance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+    startZoom: graphZoom,
+    anchorX: (graphScroller.scrollLeft + localX - GRAPH_PAN_MARGIN) / graphZoom,
+    anchorY: (graphScroller.scrollTop + localY - GRAPH_PAN_MARGIN) / graphZoom,
+    moved: false,
+  };
+  touchPan = null;
+  event.preventDefault();
+}, { passive: false });
+graphScroller.addEventListener("touchmove", (event) => {
+  if (event.touches.length >= 2 && touchPinch) {
+    event.preventDefault();
+    const first = event.touches[0], second = event.touches[1];
+    const distance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+    const midpointX = (first.clientX + second.clientX) / 2;
+    const midpointY = (first.clientY + second.clientY) / 2;
+    if (Math.abs(distance - touchPinch.startDistance) > 1) touchPinch.moved = true;
+    zoomGraphTo(
+      touchPinch.startZoom * distance / Math.max(1, touchPinch.startDistance),
+      midpointX,
+      midpointY,
+      touchPinch.anchorX,
+      touchPinch.anchorY,
+    );
+    return;
+  }
+  if (event.touches.length !== 1 || !touchPan) return;
+  const touch = Array.prototype.find.call(event.touches, (candidate) => candidate.identifier === touchPan.identifier);
+  if (!touch) return;
+  const dx = touch.clientX - touchPan.startX, dy = touch.clientY - touchPan.startY;
+  if (!touchPan.moved && Math.hypot(dx, dy) < 4) return;
+  if (!touchPan.moved) {
+    touchPan.moved = true;
+    graphScroller.classList.add("panning");
+    document.body.classList.add("graph-panning");
+  }
+  event.preventDefault();
+  graphScroller.scrollLeft = touchPan.scrollLeft - dx;
+  graphScroller.scrollTop = touchPan.scrollTop - dy;
+}, { passive: false });
+function suppressGraphClick() {
+  const suppressClick = (clickEvent) => {
+    if (clickEvent.target instanceof Node && graphScroller.contains(clickEvent.target)) {
+      clickEvent.preventDefault();
+      clickEvent.stopImmediatePropagation();
+    }
+  };
+  document.addEventListener("click", suppressClick, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener("click", suppressClick, true), 0);
+}
+function finishTouchGesture(event) {
+  if (touchPinch && event.touches.length < 2) {
+    if (touchPinch.moved) suppressGraphClick();
+    touchPinch = null;
+    touchPan = null;
+  } else if (touchPan && !Array.prototype.some.call(event.touches, (touch) => touch.identifier === touchPan.identifier)) {
+    if (touchPan.moved) suppressGraphClick();
+    touchPan = null;
+  }
+  if (!touchPinch && !touchPan) {
+    graphScroller.classList.remove("panning");
+    document.body.classList.remove("graph-panning");
+  }
+}
+graphScroller.addEventListener("touchend", finishTouchGesture, { passive: true });
+graphScroller.addEventListener("touchcancel", finishTouchGesture, { passive: true });
 document.addEventListener("pointermove", (event) => {
   if (event.pointerId !== panPointer) return;
   const dx = event.clientX - panStartX, dy = event.clientY - panStartY;
@@ -309,14 +417,7 @@ const finishGraphPan = (event) => {
   graphScroller.classList.remove("panning");
   if (graphScroller.hasPointerCapture(event.pointerId)) graphScroller.releasePointerCapture(event.pointerId);
   if (dragged) {
-    const suppressClick = (clickEvent) => {
-      if (clickEvent.target instanceof Node && graphScroller.contains(clickEvent.target)) {
-        clickEvent.preventDefault();
-        clickEvent.stopImmediatePropagation();
-      }
-    };
-    document.addEventListener("click", suppressClick, { capture: true, once: true });
-    setTimeout(() => document.removeEventListener("click", suppressClick, true), 0);
+    suppressGraphClick();
   }
 };
 document.addEventListener("pointerup", finishGraphPan);

@@ -65,8 +65,8 @@
   <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin="72" aria-valuemax="440" aria-valuenow="290" tabindex="0"></div>
   <main class="main">
     <div class="scroller graph-area">
-      <div class="graph-overlay">
-        <div class="graph-toolbar">
+      <div class="graph-overlay" id="graph-overlay">
+        <div class="graph-toolbar" id="graph-toolbar">
           <div class="ctl"><span>Step size</span><div class="seg" id="steps"></div></div>
           <div class="graph-zoom" aria-label="Graph zoom">
             <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
@@ -106,6 +106,7 @@
       <div class="panel"><h2>Still to gather</h2><div class="tiny">Raw materials, after counting everything you've already crafted.</div><div id="gather"></div></div>
       <div class="panel"><h2>Still to craft</h2><div class="tiny">Blender crafts left, in the order to make them.</div><div id="todo"></div></div>
     </div>
+    <div class="mobile-graph-controls" id="mobile-graph-controls" hidden></div>
   </main>
 </div>
 <dialog class="craft-dialog progression-guide-dialog" id="progression-guide-dialog" aria-labelledby="progression-guide-title">
