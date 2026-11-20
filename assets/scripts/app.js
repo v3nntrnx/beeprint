@@ -165,7 +165,10 @@ function setSidebarWidth(value, persist = false) {
   const compact = next <= SIDEBAR_COMPACT_THRESHOLD && innerWidth > 900;
   const modeChanged = app.classList.contains("compact-sidebar") !== compact;
   app.classList.toggle("compact-sidebar", compact);
-  if (modeChanged && $("goals").childElementCount) buildChips();
+  if (modeChanged && $("goals").childElementCount) {
+    buildChips();
+    updateGoalProgressBadges();
+  }
   sidebarResizer.setAttribute("aria-valuenow", String(next));
   if (persist && storageConsent && storageToggle.checked) {
     storageSet(SIDEBAR_WIDTH_STORAGE_KEY, String(next));
@@ -248,13 +251,10 @@ function optimalGraphZoom() {
 function setGraphZoom(value) {
   graphZoom = Math.min(1.5, Math.max(0.25, Math.round(value * 100) / 100));
   updateGraphZoom();
-  scheduleDrawEdges();
+  // Edges share the graph's transform, so zooming does not require redrawing them.
   scheduleGraphViewSave();
 }
-function zoomGraphTo(value, clientX, clientY, anchorX, anchorY) {
-  const bounds = graphScroller.getBoundingClientRect();
-  const localX = (clientX ?? bounds.left + bounds.width / 2) - bounds.left - graphScroller.clientLeft;
-  const localY = (clientY ?? bounds.top + bounds.height / 2) - bounds.top - graphScroller.clientTop;
+function zoomGraphTo(value, localX, localY, anchorX, anchorY) {
   const oldZoom = graphZoom;
   const nextZoom = Math.min(1.5, Math.max(0.25, Math.round(value * 100) / 100));
   if (nextZoom === oldZoom) return;
@@ -265,7 +265,21 @@ function zoomGraphTo(value, clientX, clientY, anchorX, anchorY) {
   graphScroller.scrollTop = contentY * nextZoom + GRAPH_PAN_MARGIN - localY;
 }
 function zoomGraphBy(amount, clientX, clientY) {
-  zoomGraphTo(graphZoom + amount, clientX, clientY);
+  const bounds = graphScroller.getBoundingClientRect();
+  const localX = (clientX ?? bounds.left + bounds.width / 2) - bounds.left - graphScroller.clientLeft;
+  const localY = (clientY ?? bounds.top + bounds.height / 2) - bounds.top - graphScroller.clientTop;
+  zoomGraphTo(graphZoom + amount, localX, localY);
+}
+let pendingGraphZoom = null, graphZoomFrame = 0;
+function scheduleGraphZoom(value, localX, localY, anchorX, anchorY) {
+  pendingGraphZoom = { value, localX, localY, anchorX, anchorY };
+  if (graphZoomFrame) return;
+  graphZoomFrame = requestAnimationFrame(() => {
+    graphZoomFrame = 0;
+    const pending = pendingGraphZoom;
+    pendingGraphZoom = null;
+    if (pending) zoomGraphTo(pending.value, pending.localX, pending.localY, pending.anchorX, pending.anchorY);
+  });
 }
 $("zoom-in").addEventListener("click", () => setGraphZoom(graphZoom + 0.1));
 $("zoom-out").addEventListener("click", () => setGraphZoom(graphZoom - 0.1));
@@ -329,6 +343,10 @@ graphScroller.addEventListener("touchstart", (event) => {
   touchPinch = {
     startDistance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
     startZoom: graphZoom,
+    startMidpointX: midpointX,
+    startMidpointY: midpointY,
+    startLocalX: localX,
+    startLocalY: localY,
     anchorX: (graphScroller.scrollLeft + localX - GRAPH_PAN_MARGIN) / graphZoom,
     anchorY: (graphScroller.scrollTop + localY - GRAPH_PAN_MARGIN) / graphZoom,
     moved: false,
@@ -344,10 +362,10 @@ graphScroller.addEventListener("touchmove", (event) => {
     const midpointX = (first.clientX + second.clientX) / 2;
     const midpointY = (first.clientY + second.clientY) / 2;
     if (Math.abs(distance - touchPinch.startDistance) > 1) touchPinch.moved = true;
-    zoomGraphTo(
+    scheduleGraphZoom(
       touchPinch.startZoom * distance / Math.max(1, touchPinch.startDistance),
-      midpointX,
-      midpointY,
+      touchPinch.startLocalX + midpointX - touchPinch.startMidpointX,
+      touchPinch.startLocalY + midpointY - touchPinch.startMidpointY,
       touchPinch.anchorX,
       touchPinch.anchorY,
     );
@@ -540,6 +558,7 @@ $("storage-allow").onclick = () => {
   storageDialog.close();
   buildChips();
   refreshGross();
+  refreshGoalGross();
   render(true);
 };
 $("storage-decline").onclick = () => {
@@ -631,6 +650,8 @@ let GROSS = plan({}).demand;
 let GOAL_GROSS = Object.fromEntries(Object.keys(D.goals).map((goal) => [goal, plan({}, [goal])]));
 function refreshGross() {
   GROSS = plan({}).demand;
+}
+function refreshGoalGross() {
   GOAL_GROSS = Object.fromEntries(Object.keys(D.goals).map((goal) => [goal, plan({}, [goal])]));
 }
 
@@ -1116,6 +1137,7 @@ function makeNode(k, P) {
       else hiddenCraftItems.delete(k);
       selectedFocusPath = [];
       refreshGross();
+      refreshGoalGross();
       if (storageConsent && storageToggle.checked) {
         storageSet(STORAGE_KEYS.hiddenCraftItems, JSON.stringify([...hiddenCraftItems]));
       }
@@ -1194,6 +1216,15 @@ function makeNode(k, P) {
 
 function goalPct(g) {
   return purchasedGoals.has(g) ? 0 : goalProgress(D, inv, g, GOAL_GROSS[g], { gatherOnly: hiddenCraftItems });
+}
+
+function updateGoalProgressBadges() {
+  if (app.classList.contains("compact-sidebar")) return;
+  for (const goal of Object.keys(D.goals)) {
+    const progress = $("gp-" + goal);
+    if (!progress || progress.parentElement.hidden) continue;
+    progress.textContent = goalPct(goal).toFixed(0) + "%";
+  }
 }
 
 function makeGoal(g) {
@@ -1489,6 +1520,7 @@ function buildChips() {
           storageSet(COLLAPSED_SHOPS_STORAGE_KEY, JSON.stringify([...collapsedGoalShops]));
         }
         buildChips();
+        updateGoalProgressBadges();
       });
       heading.setAttribute("aria-expanded", String(!collapsed));
       heading.setAttribute("aria-controls", items.id);
@@ -1570,7 +1602,10 @@ function buildChips() {
   }
 }
 
-$("goal-search").addEventListener("input", buildChips);
+$("goal-search").addEventListener("input", () => {
+  buildChips();
+  updateGoalProgressBadges();
+});
 
 function render(autoFit = false) {
   const P = plan(inv), g = $("graph"), { lvl, goalL } = layout(), N = goalL + 1;
@@ -1660,14 +1695,10 @@ function render(autoFit = false) {
     graphScroller.scrollTop = GRAPH_PAN_MARGIN + savedGraphView.top;
     restoreGraphViewOnRender = false;
   }
-  drawEdges();
+  scheduleDrawEdges();
   focusNode(null);
   if (autoFit) scheduleGraphViewSave();
-  for (const g of Object.keys(D.goals)) {
-    const label = goalPct(g).toFixed(0) + "%";
-    const progress = $("gp-" + g);
-    if (progress) progress.textContent = label;
-  }
+  updateGoalProgressBadges();
 
   const gather = $("gather"), todo = $("todo");
   gather.replaceChildren(); todo.replaceChildren();
