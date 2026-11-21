@@ -235,6 +235,7 @@ function scheduleGraphViewSave() {
 }
 function updateGraphZoom() {
   const graph = $("graph");
+  graph.style.setProperty("--graph-zoom", String(graphZoom));
   graph.style.transform = "translate(" + GRAPH_PAN_MARGIN + "px, " + GRAPH_PAN_MARGIN + "px) scale(" + graphZoom + ")";
   graphViewport.style.width = graph.offsetWidth * graphZoom + GRAPH_PAN_MARGIN * 2 + "px";
   graphViewport.style.height = graph.offsetHeight * graphZoom + GRAPH_PAN_MARGIN * 2 + "px";

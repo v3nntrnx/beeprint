@@ -2244,6 +2244,29 @@ input {
   .graph-pan {
     touch-action: none;
   }
+  .graph .own {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .graph .own input {
+    grid-column: 1/-1;
+    width: 100%;
+    min-height: max(44px, 44px / var(--graph-zoom, 1));
+    font-size: 16px;
+    padding: 6px 8px;
+  }
+  .graph .own .count-step,
+  .graph .own .blend-open,
+  .graph .own .buy-item {
+    min-width: 0;
+    min-height: max(44px, 44px / var(--graph-zoom, 1));
+    font-size: 16px;
+  }
+  .graph .own .blend-open img {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
   .graph-toolbar {
     flex: 1 1 100%;
     flex-wrap: wrap;
